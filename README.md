@@ -1,8 +1,12 @@
-# One4All Desktop · 0.7.0-preview.2
+# One4All · 0.7.0-preview.3
 
-独立设备中心。Windows 用户运行 `dist/One4All-Setup-0.7.0-preview.2.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。无须先打开 MCHOSE HUB。
+One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.3.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
 
-[下载 Windows 安装包](https://github.com/YuYiChyan/MCHOUSE_for_all/releases/download/desktop-v0.7.0-preview.2/One4All-Setup-0.7.0-preview.2.exe) · [本版发布说明](https://github.com/YuYiChyan/MCHOUSE_for_all/releases/tag/desktop-v0.7.0-preview.2)
+[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.3) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
+
+项目从 [MCHOUSE_for_all](https://github.com/YuYiChyan/MCHOUSE_for_all) 的桌面子项目发展而来，现在在 [YuYiChyan/One4All](https://github.com/YuYiChyan/One4All) 独立维护。MCHOSE 适配继续保留，启动本程序无须先打开原 HUB。旧版安装包和历史模块仍可在[原仓库发布页](https://github.com/YuYiChyan/MCHOUSE_for_all/releases)查阅。
+
+适配依据来自原厂公开驱动、设备定义及相关开源项目；各协议的出处、版本和许可证随对应适配说明保留。商品图及厂商运行资源属于各自权利人。
 
 本版补入美加狮 FGG 的 NANO68、NANO68 Pro、NANO68 Plus、NANO68 Ultra 四张键盘卡片，包含十个明确 USB 版本及原厂配色。前一版的国产鼠标、VIA 键盘与西伯利亚接入继续保留。保留卡片叠层、柔和投影和玻璃质感。选色圆点用偏心黑白渐变，加高斯模糊、烫金反光和少量金色微粒，叠加当前商品配色；悬停与展开时金箔轻微转动；色盘支持连续展开、收起和中途反向。支持库把连接方式、地区布局和重复配色收进同一产品卡，当前 635 条型号/接口记录合并为 557 张带图产品卡片，真实型号和控制入口完整保留。
 
@@ -13,6 +17,8 @@
 ## NANO68 键盘
 
 在支持库选择“美加狮 FGG”或搜索 `NANO68`。同名型号的不同轴体/USB 版本收进卡片内的版本选择，原厂配色使用原有圆点切换。基础版、Pro、Plus、Ultra 分别保留独立卡片；接口及范围见 [FGG 控制说明](docs/FGG-CONTROLS.md)。
+
+基础版、Pro、Plus 已接灯效、回报率、Win 锁、单键触发、RT 和死区；Ultra 本轮开放灯效、回报率、Win 锁和死区，触发与 RT 范围仍待原厂依据确认。LL、V2 不属于本次协议范围；十个已接 USB 版本仍全部待实机验证。
 
 ## 前一版补充
 
@@ -78,6 +84,8 @@
 检查：`node --test test/*.test.cjs`。`scripts/ai-runtime-smoke.cjs` 用本地模拟 API 和无硬件测试模块验证真实 Electron 工作进程链路；它不代表实际模型或设备验证。
 
 ## 当前验证记录
+
+0.7.0-preview.3：独立仓库与发行入口调整为 `YuYiChyan/One4All`，保留现有品牌适配、数据目录和待验证状态。先前的实机记录与本轮模拟检查仍按各自范围解释，不因更换仓库改为“已验证”。
 
 2026-11-12（0.7.0-preview.2）：新增型号的协议帧、读回、精确身份与关闭路径通过针对性夹具；使用自带 Chromium 检查新机支持库、商品图、未连接详情和返回导航。硬件功能仍标记待验证。
 

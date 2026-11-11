@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('one4allDesktop',Object.freeze({
   downloadPackage:id=>invoke('download-package',id),
   installPackage:id=>invoke('install-package',id),
   openOfficial:id=>invoke('open-official',id),
+  openProject:()=>invoke('open-project'),
   onPackageProgress:callback=>subscribe('one4all-desktop:package-progress',callback),
   getKeyboardDevices:()=>invoke('keyboard-devices'),
   prepareKeyboardHid:id=>invoke('prepare-keyboard-hid',id),

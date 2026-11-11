@@ -29,8 +29,9 @@ function copyApplication(){
  fs.mkdirSync(path.join(target,'scripts'),{recursive:true});
  for(const name of fs.readdirSync(path.join(project,'scripts')).filter(name=>/^extract-.*\.cjs$/.test(name)||name==='official-via-assets.cjs'))fs.copyFileSync(path.join(project,'scripts',name),path.join(target,'scripts',name));
  const metadata=JSON.parse(fs.readFileSync(path.join(project,'package.json'),'utf8'));
- json(path.join(target,'package.json'),{name:metadata.name,productName:metadata.productName,version:metadata.version,description:metadata.description,main:metadata.main,private:true});
- fs.copyFileSync(path.join(project,'README.md'),path.join(target,'README.md'));write(path.join(target,'packaging/README.md'),fs.readFileSync(path.join(__dirname,'README.md')));return metadata;
+ json(path.join(target,'package.json'),{name:metadata.name,productName:metadata.productName,version:metadata.version,description:metadata.description,license:metadata.license,repository:metadata.repository,homepage:metadata.homepage,bugs:metadata.bugs,main:metadata.main,private:true});
+ for(const name of ['README.md','CONTRIBUTING.md','LICENSE'])fs.copyFileSync(path.join(project,name),path.join(target,name));
+ write(path.join(target,'packaging/README.md'),fs.readFileSync(path.join(__dirname,'README.md')));return metadata;
 }
 function seedResources(resourceRoot,destination){
  const brands=[];

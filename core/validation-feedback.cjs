@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const REPOSITORY = 'YuYiChyan/MCHOUSE_for_all';
+const REPOSITORY = 'YuYiChyan/One4All';
 const ISSUE_ROOT = 'https://github.com/' + REPOSITORY + '/issues';
 const CHECKS = Object.freeze({
   dpi:'DPI 调节', dpiStages:'DPI 档位', pollRate:'回报率', lighting:'灯光与颜色',
@@ -23,6 +23,16 @@ function publicText(value, maxLength) {
     .replace(/(?:api[_ -]?key|token|password|secret|序列号|serial(?:number)?|s\/n)\s*[:=：]\s*[^\s,，;；]+/gi,'[已隐藏私密字段]')
     .replace(/(?:\\\\\?\\|[a-zA-Z]:\\)[^\s,，;；]+/g,'[已隐藏本机路径]');
 }
+function receiptRepository(receipt) {
+  if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(receipt.repository || '')) return receipt.repository;
+  // Older receipts have no repository field; their original URL is authoritative.
+  try {
+    const url = new URL(receipt.url), match = /^\/([^/]+\/[^/]+)\/issues(?:\/|$)/.exec(url.pathname);
+    if (url.origin === 'https://github.com' && match) return match[1];
+  } catch {}
+  return null;
+}
+const sameRepository = (receipt, repository) => receiptRepository(receipt)?.toLowerCase() === repository.toLowerCase();
 function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImpl = globalThis.fetch,openExternal} = {}) {
   if (!dataRoot || !path.isAbsolute(dataRoot)) throw new TypeError('dataRoot must be an absolute path');
   fs.mkdirSync(dataRoot,{recursive:true});
@@ -46,7 +56,7 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     return config();
   }
   function saveReceipt(receipt) {
-    const next = [receipt,...receipts.filter(item => item.id !== receipt.id)];
+    const next = [receipt,...receipts.filter(item => item.id !== receipt.id || !sameRepository(item,receipt.repository))];
     const temp = receiptsFile + '.tmp';
     fs.writeFileSync(temp,JSON.stringify(next,null,2),{mode:0o600});
     fs.renameSync(temp,receiptsFile); receipts = next;
@@ -66,7 +76,7 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
       providerVersion:redact(providerVersion,100),firmware:redact(input.firmware,100),checks,notes:redact(input.notes,800)
     };
     // Only public catalog fields are selected; never copy the connected HID device object.
-    const id = crypto.createHash('sha256').update(JSON.stringify(report)).digest('hex');
+    const id = crypto.createHash('sha256').update(JSON.stringify({repository:REPOSITORY,report})).digest('hex');
     const title = '[设备验证] ' + report.modelName + ' · ' + report.providerVersion;
     const body = [
       '## 用户实机验证报告','',
@@ -90,10 +100,10 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     return structuredClone(result);
   }
   function receiptBase(report) {
-    return {id:report.id,modelId:report.modelId,modelName:report.modelName,providerVersion:report.providerVersion,checks:report.checks,createdAt:new Date().toISOString()};
+    return {id:report.id,repository:REPOSITORY,modelId:report.modelId,modelName:report.modelName,providerVersion:report.providerVersion,checks:report.checks,createdAt:new Date().toISOString()};
   }
   async function perform(report) {
-    const previous = receipts.find(item => item.id === report.id);
+    const previous = receipts.find(item => item.id === report.id && sameRepository(item,REPOSITORY));
     if (previous?.submitted) return {...previous,duplicate:true};
     if (previous && ['pending','uncertain'].includes(previous.status)) return {...previous,status:'uncertain',submitted:false,message:'上次提交的结果尚未确认，请先在 GitHub 检查是否已生成报告，避免重复发布。'};
     if (!token) {
@@ -136,7 +146,7 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     const promise = perform(report).finally(() => inFlight.delete(id));
     inFlight.set(id,promise); return promise;
   }
-  return {config,saveConfig,prepare,submit,list:() => structuredClone(receipts),checks:() => ({...CHECKS})};
+  return {config,saveConfig,prepare,submit,list:() => structuredClone(receipts.map(receipt=>({...receipt,repository:receiptRepository(receipt)}))),checks:() => ({...CHECKS})};
 }
 
 module.exports = {createValidationFeedback,CHECKS,REPOSITORY};

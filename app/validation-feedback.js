@@ -16,7 +16,7 @@
     const header=node('div','o4-validation-header'),close=node('button','o4-validation-close','×');close.type='button';close.setAttribute('aria-label','关闭验证报告');
     const heading=node('h2','','确认设备功能');heading.id='o4-validation-title';header.append(heading,close);dialog.setAttribute('aria-labelledby',heading.id);
     const subtitle=node('p','o4-validation-muted',(model?.name||'设备')+' · 只记录你已经在实物上试过的功能');
-    const destination=node('p','o4-validation-destination','公开提交到 GitHub：YuYiChyan/MCHOUSE_for_all');
+    const destination=node('p','o4-validation-destination','公开提交到 GitHub：YuYiChyan/One4All');
     const method=node('select');method.setAttribute('aria-label','验证反馈提交方式');
     const githubOption=node('option','','GitHub Issue'),serverOption=node('option','','统一验证服务器');githubOption.value='github';serverOption.value='server';serverOption.disabled=true;method.append(githubOption,serverOption);
     const methodHint=node('p','o4-validation-muted','统一验证服务器尚未配置，可到支持库的“服务器设置”填写地址。');
@@ -51,7 +51,7 @@
     function serverPayload(){const selected=inputs.filter(input=>input.checked).map(input=>input.value);if(!hardware.checked||!selected.length)throw Error('请勾选实测功能并确认已完成实机测试');return {modelId:model.id,providerVersion:serverVersion(),features:selected,notes:notes.value,hardwareConfirmed:hardware.checked};}
     function update(){submit.disabled=busy||!(method.value==='server'?serverConfig?.configured:settings)||!hardware.checked||!inputs.some(input=>input.checked)||!version.value.trim();}
     function setBusy(value){busy=value;for(const item of form.querySelectorAll('input,textarea,button,select'))item.disabled=value;update();}
-    method.onchange=()=>{const server=method.value==='server';if(server){githubVersion=version.value;version.value=serverVersion();version.readOnly=true;}else{version.value=githubVersion;version.readOnly=!!providerVersion;}auth.hidden=server;firmwareInput.parentElement.hidden=server;destination.textContent=server?'提交到验证服务器：'+serverConfig.baseURL:'公开提交到 GitHub：YuYiChyan/MCHOUSE_for_all';previewText.textContent='选择功能后可预览报告。';status.textContent='';submit.textContent='确认并提交验证';update();};
+    method.onchange=()=>{const server=method.value==='server';if(server){githubVersion=version.value;version.value=serverVersion();version.readOnly=true;}else{version.value=githubVersion;version.readOnly=!!providerVersion;}auth.hidden=server;firmwareInput.parentElement.hidden=server;destination.textContent=server?'提交到验证服务器：'+serverConfig.baseURL:'公开提交到 GitHub：YuYiChyan/One4All';previewText.textContent='选择功能后可预览报告。';status.textContent='';submit.textContent='确认并提交验证';update();};
     function showSettings(value){settings=value;authText.textContent=value.tokenConfigured?'将直接使用你的 GitHub 账号创建 Issue。Token '+(value.tokenPersistence==='encrypted'?'已由系统加密保存。':'仅保留在本次运行中。'):'将打开填写好的 GitHub Issue 网页；需要登录 GitHub 后提交。';clearToken.hidden=!value.tokenConfigured;update();}
     function fail(error){if(!disposed){status.textContent=error.message||String(error);status.dataset.error='true';}}
     function dispose(){if(disposed)return;disposed=true;dialog.close();dialog.remove();previousFocus?.focus?.();if(active?.dialog===dialog)active=null;}

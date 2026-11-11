@@ -32,7 +32,7 @@
       const colorRow=el('div','product-tools');cardViews.push(One4AllColorPicker.mount(colorRow,{variants:(card.colors||[]).map(c=>({id:c.id,name:colorMeta(c.id).label,color:colorMeta(c.id).swatch,imageUrl:c.artUrl})),selectedId:colors.get(card.id)||card.defaultColor,image:img,onSelect:c=>rememberColor(card.id,c.id)}));
       const copy=el('div','card-copy'),title=button('',()=>api.openDevice(card.id,colors.get(card.id)||card.defaultColor),'card-title');title.append(el('h2','',card.title.replace(' · 本地控制器','')));copy.append(title,el('div','card-meta',[card.brand,card.type==='keyboard'?'键盘':card.type==='mouse'?'鼠标':card.type==='charger'?'充电器':card.type||'设备'].filter(Boolean).join(' · ')));root.append(colorRow,open,copy);grid.append(root);
     }if(cards.length)$('content').append(grid);else{const welcome=empty('添加你的设备','从支持库选择设备，连接后即可进入设置。');welcome.append(button('打开支持库',()=>navigate('packages'),'primary'));$('content').append(welcome);}
-    const brand=el('section','brand-entry'),copy=el('div');copy.append(el('h2','','MCHOSE HUB'),el('p','','在独立页面中打开迈从设备设置'));brand.append(copy,button('打开迈从',()=>openEmbeddedBrand('mchose')));$('content').append(brand);
+    const brand=el('section','brand-entry'),copy=el('div');copy.append(el('h2','','One4All 支持库'),el('p','','查找键盘、鼠标、耳机及其他设备，进入统一设置'));brand.append(copy,button('项目主页',()=>api.openProject()),button('浏览设备',()=>navigate('packages'),'primary'));$('content').append(brand);
   }
   const packageName=p=>p.name||p.title||({mchose:'MCHOSE HUB',razer:'Razer Synapse',logitech:'Logitech G HUB'}[p.id])||p.id;
   function packageState(p){const s=p.status||p;return s;}

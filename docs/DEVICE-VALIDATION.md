@@ -2,7 +2,7 @@
 
 控制页设备信息中的「提交验证反馈」打开报告表单。用户选择自己在实物设备上测试通过的功能，确认型号、适配器版本及备注，然后点击「确认并提交验证」。所有功能默认未勾选。页面能打开、模拟设备返回成功、协议测试通过，都不属于实机验证。
 
-默认报告发往 `YuYiChyan/MCHOUSE_for_all` 的 GitHub Issues，只包含支持库型号 ID、名称、品牌、适配器及版本、选填固件版本、用户勾选的功能和备注。不会复制设备序列号、HID 路径或运行日志。备注中的常见凭据和本机路径会隐藏；用户仍应在提交前检查公开内容。
+默认报告发往 [YuYiChyan/One4All 的 GitHub Issues](https://github.com/YuYiChyan/One4All/issues)，只包含支持库型号 ID、名称、品牌、适配器及版本、选填固件版本、用户勾选的功能和备注。不会复制设备序列号、HID 路径或运行日志。备注中的常见凭据和本机路径会隐藏；用户仍应在提交前检查公开内容。
 
 0.6.0 增加两种独立入口：卡片上的“待验证”徽章可由用户实测后确认到本机，支持撤销；支持库的“服务器设置”可填写未来部署的统一验证服务地址。地址配置后，反馈窗口可以选择该服务器，支持库可刷新服务端的功能状态。当前未绑定或部署服务器，保存地址本身不发送请求。
 
@@ -21,7 +21,15 @@ GitHub 不提供游客直接创建 Issue。创建接口要求认证；细粒度�
 
 成功提交保存到数据目录的 `validation-receipts.json`。记录包含该型号、适配器版本、通过功能和 Issue 链接；不改变支持库的全局 `unverified` 标记。维护者根据报告与后续复核，更新具体型号及具体功能的验证状态。
 
-同一报告内容有稳定指纹。重复点击、并发点击、程序重启后的相同报告会复用已成功的 Issue。网络中断或返回结果不完整时保留“结果未确认”，防止自动重发。用户应先去仓库检查是否已发布；程序不会将浏览器打开视作提交成功。
+同一目标仓库内的报告内容有稳定指纹。重复点击、并发点击、程序重启后的相同报告会复用已成功的 Issue。网络中断或返回结果不完整时保留“结果未确认”，防止自动重发。用户应先去仓库检查是否已发布；程序不会将浏览器打开视作提交成功。
+
+## 独立仓库迁移
+
+新报告目标改为 `YuYiChyan/One4All`；原 `YuYiChyan/MCHOUSE_for_all` 的已提交、待确认和失败回执完整保留，链接仍指向原仓库。新回执显式记录 `repository`，旧回执则根据原有 GitHub URL 显示来源。去重同时区分目标仓库，旧成功记录不会被当成新仓库已经收到的反馈，也不会被新记录覆盖。
+
+报告预览只保存在当前进程内，没有可自动重放的持久化草稿。旧 `pending` / `uncertain` 回执不包含完整正文，不会自动搬运或重发。重启后需重新打开表单，检查新目标并点击确认，才会产生发往新仓库的报告；旧回执的结果仍需到旧链接核对。
+
+迁移不重写 `validation-config.json` 或清除其中的加密 Token，也不修改本机确认和验证服务器设置。若原 Token 只授予旧仓库权限，新仓库提交可能需要用户调整该 Token 的仓库权限，或改用浏览器登录提交。
 
 ## 接入接口
 
@@ -31,7 +39,7 @@ GitHub 不提供游客直接创建 Issue。创建接口要求认证；细粒度�
 - `saveConfig({ token, clearToken })`：保存用户主动填写的凭据。留空保留原设置；`clearToken: true` 清除。
 - `prepare({ model, providerVersion, firmware, checks, notes, hardwareConfirmed })`：从真实支持库模型筛选公开字段，生成预览；必须明确版本、至少一项有效检查、`hardwareConfirmed: true`。返回 `id/title/body/url/modelId/providerVersion/checks`。
 - `submit(report.id)`：只提交本进程生成的报告，不接受调用者替换的正文或仓库。返回 `submitted/mode/status/url`，直接提交成功还包含 `number`。
-- `list()`：已保存的提交记录。
+- `list()`：已保存的提交记录，包含各自的目标 `repository`；旧记录的来源从原有 URL 识别。
 
 渲染端 `window.One4AllValidation.open({ model, providerVersion, firmware, availableChecks, api, notify, onSubmitted })` 返回 `{ ready, dispose }`。`availableChecks` 可传检查 ID 数组或 `{ id, label }` 数组，标签以内置中文文本为准。传入空数组不会凭空出现控制功能。若允许离线补报，应传该型号已实现的能力列表，用户自行勾选过去实际验证过的项目。
 

@@ -168,6 +168,7 @@ else {
     handle('download-package',id=>packages.download(id));
     handle('install-package',id=>packages.install(id));
     handle('open-official',id=>{const url=require('../core/domestic-models.cjs').OFFICIAL_SETTINGS[id];return url?shell.openExternal(url):packages.openOfficial(id);});
+    handle('open-project',()=>shell.openExternal('https://github.com/YuYiChyan/One4All'));
     handle('keyboard-devices',async()=>{const state=await keyboardService.status();return state.devices;});
     handle('prepare-keyboard-hid',async id=>{const state=await keyboardService.status();const target=state.devices.find(device=>device.id===id);if(!target)throw Error('键盘已断开，请重新扫描');if(!target.collections?.some(c=>c.usagePage===0xff60&&c.usage===0x61))throw Error('此键盘没有提供 VIA 原始 HID 接口');keyboardTarget={id:target.id,vendorId:target.vendorId,productId:target.productId,usage:0x61,filters:[{vendorId:target.vendorId,productId:target.productId,usagePage:0xff60,usage:0x61}]};return keyboardTarget;});
     // Provider capability reports are added when an actual protocol adapter has
