@@ -73,7 +73,7 @@ class Backend:
                 raw = self.read(handle, field['address'])
                 values[key] = self.protocol.decode_field(key, raw)
                 capabilities[key] = {name: value for name, value in field.items() if name not in ('address', 'source', 'evidence')}
-                capabilities[key].update(readable=True, writable=field.get('writable', False))
+                capabilities[key].update(readable=True, writable=field.get('writable', False), readVerified=info['product_id'] == 0x010c)
             except (OSError, ValueError, TimeoutError) as error:
                 errors[key] = str(error)
         return {'ok': True, 'connected': True, 'interfaceConfirmed': bool(values), 'device': self.metadata(info), 'capabilities': capabilities, 'values': values, 'errors': errors, 'provider': 'maono-hidapi', 'verification': 'unverified'}
