@@ -1,6 +1,6 @@
 # MAONO PD100X（352F:010C）
 
-本适配只对应已连接的 **PD100X Podcast Microphone，VID 352F / PID 010C**。不将 PD100X RGB（0108）、Lite（0109）或 PD200X 自动列为兼容。控制通过 USB HID 输入/输出报告直连，**不需要 MAONO Link 常驻**。原厂程序未安装或启动。
+本适配只对应已连接的 **PD100X Podcast Microphone，VID 352F / PID 010C**。PD100X RGB（0108）已有独立的待验证接入，见 [PD100X RGB](MAONO-PD100X-RGB.md)；Lite（0109）及 PD200X 未自动套用本协议。控制通过 USB HID 输入/输出报告直连，**不需要 MAONO Link 常驻**。原厂程序未安装或启动。
 
 ## 原厂来源与拆包
 

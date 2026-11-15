@@ -17,19 +17,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 def load_model():
     catalog = json.loads((Path(__file__).resolve().parent.parent / 'catalog' / 'maono-microphones.json').read_text(encoding='utf-8'))
-    return next(model for model in catalog['models'] if model['id'] == 'maono-pd100x')
+    return {model['id']: model for model in catalog['models']}
 
 
 def device_matches(info):
     path = info.get('path', b'')
     path = path.decode('utf-8', errors='replace') if isinstance(path, bytes) else str(path)
     interface = info.get('interface_number') == 3 or '&mi_03' in path.lower()
-    return info.get('vendor_id') == 0x352f and info.get('product_id') == 0x010c and interface and info.get('usage_page') == 12 and info.get('usage') == 1
+    return info.get('vendor_id') == 0x352f and info.get('product_id') in (0x010c, 0x0108) and interface and info.get('usage_page') == 12 and info.get('usage') == 1
 
 
 def device_id(info):
     raw = info['path'] if isinstance(info['path'], bytes) else str(info['path']).encode('utf-8')
-    return 'maono-352f-010c-' + hashlib.sha256(raw).hexdigest()[:20]
+    return 'maono-352f-%04x-' % info['product_id'] + hashlib.sha256(raw).hexdigest()[:20]
 
 
 class Backend:
@@ -37,13 +37,15 @@ class Backend:
         if protocol is None:
             import maono_protocol as protocol
         self.hid, self.protocol, self.timeout_ms = hid, protocol, timeout_ms
-        self.model = load_model()
+        self.models = load_model()
+        self.model = self.models['maono-pd100x']
 
     def metadata(self, info):
-        return {'id': device_id(info), 'modelId': self.model['id'], 'name': self.model['name'], 'brand': 'maono', 'kind': 'microphone', 'vendorId': 0x352f, 'productId': 0x010c, 'connected': True, 'verification': 'unverified'}
+        model = self.models['maono-pd100x-rgb' if info['product_id'] == 0x0108 else 'maono-pd100x']
+        return {'id': device_id(info), 'modelId': model['id'], 'name': model['name'], 'brand': 'maono', 'kind': 'microphone', 'vendorId': 0x352f, 'productId': info['product_id'], 'connected': True, 'verification': 'unverified'}
 
     def scan(self):
-        return [info for info in self.hid.enumerate(0x352f, 0x010c) if device_matches(info)]
+        return [info for info in self.hid.enumerate(0x352f, 0) if device_matches(info)]
 
     def read(self, handle, address):
         packet = self.protocol.read_packet(address)
@@ -65,6 +67,8 @@ class Backend:
     def snapshot(self, handle, info):
         values, capabilities, errors = {}, {}, {}
         for key, field in self.protocol.FIELD_DEFINITIONS.items():
+            if info['product_id'] == 0x0108 and key not in ('gain', 'mute', 'noise', 'noiseLevel'):
+                continue
             try:
                 raw = self.read(handle, field['address'])
                 values[key] = self.protocol.decode_field(key, raw)
@@ -82,9 +86,10 @@ class Backend:
         if action == 'scan':
             return {'ok': True, 'devices': [self.metadata(info) for info in records]}
         target = request.get('deviceId')
-        if target == self.model['id'] and action == 'status':
+        if target in self.models and action == 'status':
+            records = [info for info in records if self.metadata(info)['modelId'] == target]
             selected = records[0] if len(records) == 1 else None
-        elif isinstance(target, str) and re.fullmatch(r'maono-352f-010c-[a-f0-9]{20}', target):
+        elif isinstance(target, str) and re.fullmatch(r'maono-352f-(?:010c|0108)-[a-f0-9]{20}', target):
             selected = next((info for info in records if device_id(info) == target), None)
         else:
             raise ValueError('请选择实际连接的 PD100X')
@@ -99,7 +104,7 @@ class Backend:
                 command = request.get('command', '')
                 key = command[:-4] if command.endswith('.set') else None
                 field = self.protocol.FIELD_DEFINITIONS.get(key)
-                if not field or not field.get('writable'):
+                if not field or not field.get('writable') or (selected['product_id'] == 0x0108 and key not in ('gain', 'mute', 'noise', 'noiseLevel')):
                     raise ValueError('PD100X 尚未开放此设置')
                 current = self.read(handle, field['address'])
                 encoded = self.protocol.encode_field(key, request.get('value'), current)

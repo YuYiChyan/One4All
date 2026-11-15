@@ -85,10 +85,19 @@ class BackendTests(unittest.TestCase):
 
     def test_scan_is_identity_only_and_exact_model_interface(self):
         hid, service = self.fixture()
-        hid.records += [{**hid.info, 'product_id': 0x0108}, {**hid.info, 'path': b'wrong&mi_02', 'interface_number': 2}, {**hid.info, 'usage_page': 1}]
+        hid.records += [{**hid.info, 'product_id': 0x0109}, {**hid.info, 'path': b'wrong&mi_02', 'interface_number': 2}, {**hid.info, 'usage_page': 1}]
         self.assertEqual(len(service.run({'action': 'scan'})['devices']), 1)
         self.assertEqual(hid.opens, 0)
         self.assertFalse(hid.sent)
+
+    def test_rgb_selection_and_capabilities(self):
+        hid, service = self.fixture()
+        hid.records = [{**hid.info, 'product_id': 0x0108, 'path': b'rgb&mi_03'}]
+        state = service.run({'action': 'status', 'deviceId': 'maono-pd100x-rgb'})
+        self.assertEqual(state['device']['productId'], 0x0108)
+        self.assertEqual(set(state['capabilities']), {'gain'})
+        self.assertTrue(all(packet[5] == 4 for packet in hid.sent))
+        self.assertFalse(service.run({'action': 'status', 'deviceId': 'maono-pd100x'})['connected'])
 
     def test_status_filters_live_level_and_wrong_register_without_writes(self):
         hid, service = self.fixture()

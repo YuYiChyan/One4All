@@ -15,7 +15,7 @@ function createMaonoService({payloadRoot,stateRoot,run,execProcess=execFile}={})
   });child=current;current.stdin.on('error',()=>{});current.stdin.end(JSON.stringify(request));
  }));
  function enqueue(request){if(closed)return Promise.reject(Error('麦克风模块已关闭'));const ticket=revision;const job=queue.catch(()=>{}).then(()=>{if(closed||ticket!==revision)throw cancelled();return transport(request);});queue=job;return job;}
- const identity=id=>{if(typeof id!=='string'||!/^maono-352f-010c-[a-f0-9]{20}$/.test(id))throw Error('请选择已连接的 PD100X');return id;};
+ const identity=id=>{if(typeof id!=='string'||!/^maono-352f-(?:010c|0108)-[a-f0-9]{20}$/.test(id))throw Error('请选择已连接的 PD100X');return id;};
  return Object.freeze({
   scan:()=>enqueue({action:'scan'}),
   status:id=>enqueue({action:'status',deviceId:getMaonoModel(id)?id:identity(id)}),
