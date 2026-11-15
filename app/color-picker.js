@@ -74,8 +74,8 @@
    };
    if(!image||!variant.imageUrl){commit();return;}
    root.setAttribute('aria-busy','true');buttons.find(button=>button.dataset.variantId===variant.id)?.setAttribute('data-loading','');status.textContent='正在加载'+(variant.name||variant.id)+'商品图';
-   const loader=new win.Image();let settled=false,timer;
-   const clean=()=>{clearTimeout(timer);loader.onload=null;loader.onerror=null;};
+   const loader=new win.Image();let settled=false;
+   const clean=()=>{loader.onload=null;loader.onerror=null;};
    const fail=()=>{if(settled)return;settled=true;clean();if(disposed||ticket!==revision)return;cancelPending();status.textContent='商品图暂时无法加载，已保留当前配色';};
    pending=()=>{settled=true;clean();loader.removeAttribute('src');};
    loader.onload=async()=>{
@@ -83,7 +83,7 @@
     try{await loader.decode?.();}catch{}
     if(!disposed&&ticket===revision)commit();
    };
-   loader.onerror=fail;timer=setTimeout(fail,12000);loader.src=variant.imageUrl;
+   loader.onerror=fail;loader.src=variant.imageUrl;
   }
   function onKey(event){
    event.stopPropagation();

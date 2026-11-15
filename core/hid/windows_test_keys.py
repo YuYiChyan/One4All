@@ -99,7 +99,6 @@ def main():
         if not timer:
             raise c.WinError(c.get_last_error())
         events.put({'type': 'ready', 'scope': 'foreground-windows-keys-only'})
-        deadline = time.monotonic() + 900
         message = w.MSG()
         while True:
             status = get_message(c.byref(message), None, 0, 0)
@@ -111,9 +110,6 @@ def main():
                     break
                 if wait(parent, 0) != 0x102:
                     reason = 'owner-exited'
-                    break
-                if time.monotonic() >= deadline:
-                    reason = 'time-limit'
                     break
             translate(c.byref(message))
             dispatch(c.byref(message))

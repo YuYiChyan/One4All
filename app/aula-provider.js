@@ -40,7 +40,7 @@
    else throw Error('尚未接入此狼蛛设置');
    await this.transport.transfer(6,raw.length,raw);const after=await this.readState();delete after._raw;if(!check(after))throw Error('设备返回的设置与写入值不一致');return after;
   });}
-  async close(){this.closed=true;await this.transport.close();await this.queue;}
+  async close(){this.closed=true;await this.transport.close();}
  }
  function matching(device,protocol){return protocol.connections.find(c=>device.vendorId===c.vendorId&&device.productId===c.productId&&device.collections?.some(collection=>collection.usagePage===c.usagePage&&collection.usage===c.usage&&(collection.outputReports||[]).some(report=>report.reportId===4)));}
  function createApi({model,protocol=model.support,hid=globalThis.navigator?.hid,prepare=async()=>{},timeout}={}){

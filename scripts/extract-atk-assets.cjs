@@ -1,11 +1,12 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {fetchResource}=require('../core/resource-refresh-network.cjs');
 const {extract}=require('../core/atk-source.cjs');
 const {extractVgn}=require('../core/atk-vgn-source.cjs');
 const {mergeProducts}=require('../core/atk-products.cjs');
 const ROOT=path.join(process.env.LOCALAPPDATA,'One4All-Desktop/vendor-resources');
 const FILES={'index.js':'index-D7O1ZtHt.js','filter-PWVdWXeB.js':'filter-PWVdWXeB.js','mouse-skins-shCwZ6jw.js':'mouse-skins-shCwZ6jw.js','keyboard.assets.js':'keyboard.assets-v8XFWQWT.js'};
-async function download(url,file){if(fs.existsSync(file))return;const response=await fetch(url,{signal:AbortSignal.timeout(45000)});if(!response.ok)throw Error(response.status+' '+url);const bytes=Buffer.from(await response.arrayBuffer());if(bytes.length<16)throw Error('Empty resource '+url);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);}
+async function download(url,file){if(fs.existsSync(file)&&fs.statSync(file).size)return;const {bytes}=await fetchResource(url);if(!bytes.length)throw Error('Empty resource '+url);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);}
 async function main({resourceRoot=ROOT,offline=false}={}){const sourceRoot=path.join(resourceRoot,'atk/source');if(!offline)for(const [local,remote]of Object.entries(FILES))await download('https://bpcdn.atkgear.com/hub-v3/production/3.2.32/static/'+remote,path.join(sourceRoot,local));const catalog=extract({root:sourceRoot}),errors=[];const vgnRoot=path.join(resourceRoot,'vgn/source');if(!offline)for(const [local,remote]of [['index.js','index-CeliRb9v.js'],['images.js','images-BRj5GHp3.js']])await download('https://drive.vgnlab.com.cn/assets/'+remote,path.join(vgnRoot,local));const vgn=extractVgn({root:vgnRoot});catalog.models.push(...vgn.models);
  const urls=[...new Set(catalog.models.flatMap(m=>m.variants.map(v=>v.imageUrl)))],images=new Map();let cursor=0;
  await Promise.all(Array.from({length:6},async()=>{while(cursor<urls.length){const url=urls[cursor++],file=path.join(resourceRoot,'atk/assets',crypto.createHash('sha256').update(url).digest('hex').slice(0,20)+path.extname(new URL(url).pathname));try{if(!offline)await download(url,file);if(fs.existsSync(file))images.set(url,file);}catch(error){errors.push({url,error:error.message});}}}));

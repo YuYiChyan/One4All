@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
 const {app, BrowserWindow, WebContentsView, ipcMain, session, shell, dialog, safeStorage, utilityProcess} = require('electron');
+const {attachPageNavigation}=require('../core/page-navigation.cjs');
 const projectRoot = path.resolve(__dirname, '..');
 const stateRoot = process.env.ONE4ALL_DESKTOP_STATE || path.join(app.getPath('appData'), 'One4All-Desktop');
 app.setPath('userData', path.join(stateRoot, 'browser'));
@@ -80,16 +81,14 @@ async function openBrand(id){
       try{
         const choices=details.deviceList;
         if(!choices.length){callback();return;}
-        const result=await dialog.showMessageBox(mainWindow,{title:'连接 '+entry.brand+' 设备',message:'选择允许此官方网页控制的设备',buttons:[...choices.map((d,i)=>(d.name||d.productName||'HID 设备')+' ('+(i+1)+')'),'取消'],cancelId:choices.length,noLink:true});
-        const selected=choices[result.response];if(selected)grants.add(identity(selected));callback(selected?.deviceId);
+        const selected=await chooseDevice(choices,'请选择要设置的 '+entry.brand+' 设备');if(selected)grants.add(identity(selected));callback(selected?.deviceId);
       }catch{callback();}
     });
   }
   const view=new WebContentsView({webPreferences:{session:ses,contextIsolation:true,nodeIntegration:false,sandbox:true}});
   const layout=()=>{if(mainWindow&&!mainWindow.isDestroyed()){const [width,height]=mainWindow.getContentSize();view.setBounds({x:0,y:60,width,height:Math.max(0,height-60)});}};
   brandView={view,layout,id};mainWindow.contentView.addChildView(view);mainWindow.on('resize',layout);layout();
-  view.webContents.setWindowOpenHandler(({url})=>{if(allowed(url))view.webContents.loadURL(url);return{action:'deny'};});
-  view.webContents.on('will-navigate',(event,url)=>{if(!allowed(url))event.preventDefault();});
+  attachPageNavigation(view.webContents,{inside:allowed,openExternal:url=>shell.openExternal(url),onError:error=>log('link-error',error.message)});
   view.webContents.on('before-input-event',(_event,input)=>{if(input.type==='keyDown'&&input.key==='Escape')closeBrand();});
   mainWindow.webContents.send('dc-lab:embedded-state',{open:true,kind:id,title:entry.name});
   try{await view.webContents.loadURL(entry.webDriver);return brandView?.view===view;}catch(error){if(brandView?.view!==view)return false;closeBrand();throw Error('官方网页暂时无法加载：'+error.message);}
@@ -103,7 +102,7 @@ else {
     const registered=readJson(path.join(stateRoot,'registry.json'),{plugins:[]});
     runtime=registered.plugins?.length?require('../runtime/host.cjs').start({stateRoot,payloadRoot,homeURL,getTheme:()=>settings.theme}):{listCards:()=>[],closeDevice:()=>{},setTheme:()=>{},openDevice(){throw Error('请从支持库选择设备');}};
     keyboardService=require('../core/hid/keyboard-service.cjs').createKeyboardService({python:path.join(payloadRoot,'python','python.exe'),profileDirectory:path.join(stateRoot,'data','keyboard-appearance')});
-    packages=require('../core/vendor-packages.cjs').createPackageManager({dataRoot:packageRoot,openPath:file=>shell.openPath(file),openExternal:url=>shell.openExternal(url),onProgress:state=>{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send('one4all-desktop:package-progress',state);}});
+    packages=require('../core/vendor-packages.cjs').createPackageManager({dataRoot:packageRoot,openPath:file=>shell.openPath(file),openExternal:url=>shell.openExternal(url),chooseInstaller:async(files,{directory})=>{const result=await dialog.showMessageBox(mainWindow,{title:'选择安装程序',message:'安装包中有多个程序，请选择要打开的安装器',buttons:[...files.map(file=>path.relative(directory,file)),'取消'],cancelId:files.length,noLink:true});return files[result.response];},onProgress:state=>{if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send('one4all-desktop:package-progress',state);}});
     deviceCatalog=require('../core/device-catalog.cjs').createDeviceCatalog({resourceRoot:path.join(packageRoot,'vendor-resources')});
     razerService=require('../core/razer-models.cjs').createRazerService({payloadRoot,stateRoot});
     logitechService=require('../core/logitech-models.cjs').createLogitechService({payloadRoot,stateRoot,resourceRoot:path.join(packageRoot,'vendor-resources')});
@@ -113,11 +112,14 @@ else {
     verificationServer=require('../core/verification-server.cjs').createVerificationServer({dataRoot:stateRoot});
     resourceRefresh=require('../core/resource-refresh.cjs').createResourceRefresh({utilityProcess});
     handle('refresh-resources',brand=>resourceRefresh.run(brand));
+    handle('cancel-resource-refresh',brand=>resourceRefresh.cancel(brand));
     handle('device-catalog',()=>{const catalog=deviceCatalog.list();return {...catalog,presentation:require('../core/catalog-presentation.cjs').buildCatalogPresentation(catalog.devices),brands:require('../core/domestic-models.cjs').BRANDS};});
     handle('razer-scan',()=>razerService.scan());
+    handle('razer-cancel',()=>razerService.cancelPending());
     handle('razer-status',id=>razerService.status(id));
     handle('razer-execute',request=>razerService.execute(request));
     handle('logitech-scan',()=>logitechService.scan());
+    handle('logitech-cancel',()=>logitechService.cancelPending());
     handle('logitech-status',id=>logitechService.status(id));
     handle('logitech-execute',request=>logitechService.execute(request));
     handle('xiberia-scan',()=>xiberiaService.scan());
@@ -133,6 +135,7 @@ else {
     handle('validation-save-config',config=>validation.saveConfig(config));
     handle('validation-prepare',request=>validation.prepare(request));
     handle('validation-submit',id=>validation.submit(id));
+    handle('validation-cancel',()=>validation.cancelSubmission());
     handle('validation-list',()=>validation.list());
     handle('local-verification-status',request=>localVerification.status(request));
     handle('local-verification-set',request=>localVerification.set(request));
@@ -141,10 +144,11 @@ else {
     handle('verification-server-save-config',config=>verificationServer.saveConfig(config));
     handle('verification-server-refresh',request=>verificationServer.refresh(request));
     handle('verification-server-submit',request=>verificationServer.submit(request));
+    handle('verification-server-cancel',()=>verificationServer.cancelRequests());
     handle('verification-server-list',()=>verificationServer.list());
     ai=require('../core/ai-adapter.cjs').createAiAdapter({dataRoot:stateRoot,
       ...(safeStorage.isEncryptionAvailable()?{encryptString:v=>safeStorage.encryptString(v),decryptString:v=>safeStorage.decryptString(v)}:{}),
-      getPackageContext:async id=>{const entry=packages.catalog().find(p=>p.id===id);if(!entry)throw Error('请选择支持库中的品牌');const evidence=await require('../core/package-inspector.cjs').inspectPackage({entry,status:packages.status(id)});const models=deviceCatalog.list().devices.filter(d=>d.brand===id);return {...evidence,deviceCatalog:{count:models.length,models:models.slice(0,80).map(d=>({id:d.id,name:d.name,identifiers:d.identifiers,provider:d.support.provider,hasImage:d.hasImage}))}};}
+      getPackageContext:async(id,{signal}={})=>{const entry=packages.catalog().find(p=>p.id===id);if(!entry)throw Error('请选择支持库中的品牌');const evidence=await require('../core/package-inspector.cjs').inspectPackage({entry,status:packages.status(id),signal});const models=deviceCatalog.list().devices.filter(d=>d.brand===id);return {...evidence,deviceCatalog:{count:models.length,models:models.map(d=>({id:d.id,name:d.name,identifiers:d.identifiers,provider:d.support.provider,hasImage:d.hasImage}))}};}
     });
     adapterRunner=require('../core/adapter-runner.cjs').createAdapterRunner({stateRoot,utilityProcess});
     function listDrafts(){const root=path.join(stateRoot,'adapter-drafts');if(!fs.existsSync(root))return [];return fs.readdirSync(root,{withFileTypes:true}).filter(e=>e.isDirectory()).flatMap(e=>{const d=readJson(path.join(root,e.name,'draft.json'),null);return d?[{...d,id:e.name,directory:path.join(root,e.name)}]:[];}).sort((a,b)=>b.id.localeCompare(a.id));}
@@ -153,6 +157,7 @@ else {
     handle('ai-save-config',config=>ai.saveConfig(config));
     handle('ai-test',()=>ai.testConnection());
     handle('ai-generate',request=>ai.generate(request));
+    handle('ai-cancel',()=>ai.cancelGeneration());
     handle('ai-drafts',listDrafts);
     handle('ai-open-draft',id=>shell.openPath(getDraft(id).directory));
     handle('ai-start-draft',async id=>{const draft=getDraft(id),entry=packages.catalog().find(p=>p.id===draft.packageId);const status=packages.status(draft.packageId);const devices=(await keyboardService.status()).devices;const matches=draft.manifest.matches||[];const device=devices.find(d=>matches.some(m=>Number(m.vendorId)===d.vendorId&&Number(m.productId)===d.productId));return adapterRunner.start(draft,status.installedPath?path.dirname(status.installedPath):path.dirname(status.downloadPath||packageRoot),device||{});});
@@ -165,20 +170,21 @@ else {
     handle('get-theme',()=>settings.theme==='dark'?'dark':'light');
     handle('set-theme',theme=>{if(!['light','dark'].includes(theme))throw Error('未知主题');settings.theme=theme;saveSettings();runtime.setTheme(theme);return theme;});
     handle('get-packages',()=>({catalog:packages.catalog(),status:packages.status()}));
-    handle('download-package',id=>packages.download(id));
+    handle('download-package',(id,options)=>packages.download(id,options));
+    handle('cancel-package-download',id=>packages.cancel(id));
     handle('install-package',id=>packages.install(id));
     handle('open-official',id=>{const url=require('../core/domestic-models.cjs').OFFICIAL_SETTINGS[id];return url?shell.openExternal(url):packages.openOfficial(id);});
     handle('open-project',()=>shell.openExternal('https://github.com/YuYiChyan/One4All'));
     handle('keyboard-devices',async()=>{const state=await keyboardService.status();return state.devices;});
-    handle('prepare-keyboard-hid',async id=>{const state=await keyboardService.status();const target=state.devices.find(device=>device.id===id);if(!target)throw Error('键盘已断开，请重新扫描');if(!target.collections?.some(c=>c.usagePage===0xff60&&c.usage===0x61))throw Error('此键盘没有提供 VIA 原始 HID 接口');keyboardTarget={id:target.id,vendorId:target.vendorId,productId:target.productId,usage:0x61,filters:[{vendorId:target.vendorId,productId:target.productId,usagePage:0xff60,usage:0x61}]};return keyboardTarget;});
+    handle('keyboard-cancel',()=>keyboardService.cancelPending());
+    handle('prepare-keyboard-hid',async id=>{const state=await keyboardService.status();const target=state.devices.find(device=>device.id===id);if(!target)throw Error('键盘已断开，请重新扫描');if(!target.collections?.some(c=>c.usagePage===0xff60&&c.usage===0x61))throw Error('此键盘没有提供 VIA 原始 HID 接口');const model=['keychron','monsgeek','akko','rk','redragon'].flatMap(brand=>require('../core/official-via-models.cjs').getOfficialViaModels(brand)).find(model=>model.support.filters?.some(filter=>filter.vendorId===target.vendorId&&filter.productId===target.productId&&filter.usagePage===0xff60&&filter.usage===0x61));keyboardTarget={id:target.id,vendorId:target.vendorId,productId:target.productId,usage:0x61,filters:[{vendorId:target.vendorId,productId:target.productId,usagePage:0xff60,usage:0x61}],definition:model?.support.definition};return keyboardTarget;});
     // Provider capability reports are added when an actual protocol adapter has
     // established an interface. Discovery alone cannot unlock hardware writes.
-    handle('keyboard-capabilities',async id=>{const state=await keyboardService.status();if(!state.devices.some(device=>device.id===id))throw Error('设备已断开，请重新扫描');return [];});
+    handle('keyboard-capabilities',()=>[]);
     handle('keyboard-execute',()=>{throw Error('该设备尚未提供此设置接口，请使用已接入的原厂控制页。');});
     handle('app-info',()=>({version:app.getVersion(),stateRoot,payloadRoot,runtime:process.versions.electron,freshInstall:bootstrapInfo.freshInstall}));
     mainWindow=new BrowserWindow({title:'One4All',icon:path.join(__dirname,'assets/one4all.png'),width:1360,height:900,minWidth:960,minHeight:680,backgroundColor:settings.theme==='dark'?'#14171c':'#f5f6f8',autoHideMenuBar:true,show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
-    mainWindow.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-    mainWindow.webContents.on('will-navigate',(event,url)=>{if(url!==homeURL)event.preventDefault();});
+    attachPageNavigation(mainWindow.webContents,{inside:url=>url.split(/[?#]/)[0]===homeURL,openExternal:url=>shell.openExternal(url),onError:error=>log('link-error',error.message)});
     mainWindow.webContents.on('console-message',(_event,details)=>{if(details.level==='error')log('renderer-error',details.message);});
     mainWindow.webContents.on('render-process-gone',(_event,details)=>log('renderer-gone',details));
     mainWindow.on('closed',()=>{closeBrand();runtime.closeDevice();mainWindow=null;});

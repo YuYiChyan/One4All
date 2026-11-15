@@ -1,8 +1,10 @@
-# One4All · 0.7.0-preview.3
+# One4All · 0.7.0-preview.4
 
-One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.3.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
+One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.4.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
 
-[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.3) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
+[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.4) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
+
+0.7.0-preview.4 完成用户操作流程审计：去掉下载、资源刷新、模型生成和完整设备扫描中的默认硬性总时限，补上取消、重新下载与失败重试；修复人工设备选择倒计时、控件锁死、外链无反应和接口资料被任意裁剪等问题。原有设备范围、商品图、圆点切色及本机设置保留。逐项结果见 [操作流程审计](docs/OPERATION-AUDIT.md)。
 
 项目从 [MCHOUSE_for_all](https://github.com/YuYiChyan/MCHOUSE_for_all) 的桌面子项目发展而来，现在在 [YuYiChyan/One4All](https://github.com/YuYiChyan/One4All) 独立维护。MCHOSE 适配继续保留，启动本程序无须先打开原 HUB。旧版安装包和历史模块仍可在[原仓库发布页](https://github.com/YuYiChyan/MCHOUSE_for_all/releases)查阅。
 

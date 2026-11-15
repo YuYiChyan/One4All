@@ -1,9 +1,10 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {fetchResource,safeResourcePath}=require('../core/resource-refresh-network.cjs');
 const ORIGIN='https://www.darmoshark.cc/',API='https://launcher.keychron.cn/',sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 async function extract({outputRoot=path.join(process.env.LOCALAPPDATA,'One4All-Desktop/vendor-resources/darmoshark'),offline=false,updateRegistry=true}={}){
  const sourceRoot=path.join(outputRoot,'source');fs.mkdirSync(sourceRoot,{recursive:true});
- async function resource(url,name){const file=path.join(sourceRoot,name);if(offline&&fs.existsSync(file))return fs.readFileSync(file);const r=await fetch(url,{signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error(url+': '+r.status);const b=Buffer.from(await r.arrayBuffer());fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,b);return b;}
+ async function resource(url,name){const file=safeResourcePath(sourceRoot,name);if(offline&&fs.existsSync(file))return fs.readFileSync(file);const {bytes:b}=await fetchResource(url);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,b);return b;}
  const html=(await resource(ORIGIN,'index.html')).toString(),mainName=html.match(/src="(main\.[^\"]+\.js)"/)[1],script=await resource(ORIGIN+mainName,'main.js'),text=script.toString();
  const filters=[...text.match(/deviceFilters:(\[.*?\]),productFirmware/)[1].matchAll(/vendorId:(\d+),productId:(\d+)/g)].map(m=>({vendorId:+m[1],productId:+m[2]}));
  const firmwareMap=[...text.match(/productFirmware:(\[.*?\])},m=/)[1].matchAll(/productName:"([^"]+)",productID:"([^"]+)",PID:"([^"]+)"/g)].map(m=>({name:m[1],firmwarePid:Number(m[2]),productId:Number(m[3])}));

@@ -4,7 +4,7 @@
 
 ## 地址与来源
 
-独立配置文件：用户数据目录的 `verification-server-config.json`，仅保存 `baseURL`。支持 HTTPS、HTTP 地址及路径前缀，不允许在地址里附带用户名、密码、查询参数或片段。清空地址即停用；更换地址会清除旧服务器缓存。
+独立配置文件：用户数据目录的 `verification-server-config.json`，仅保存 `baseURL`。支持用户填写的 HTTPS、HTTP、本机地址、路径前缀和查询参数。地址片段不发送到服务器；URL 中的用户名/密码不适用于 fetch 请求。接口路径追加到 pathname，已有查询参数在 GET 与 POST 中保留。清空地址即停用；更换地址会清除旧服务器缓存。
 
 服务端缓存为 `verification-server-state.json`，本机确认仍使用独立的 `local-verifications.json`。每条服务器记录都有 `scope: "server"` 和 `serverURL`；本机确认使用 `scope: "local"`。两者不能互相覆盖。
 
@@ -31,7 +31,7 @@
 }
 ```
 
-`nextCursor` 为字符串或 `null`。`null` 表示服务器未提供增量游标，下次客户端重新请求完整快照。本版本不使用分页，单次响应上限 10,000 条型号/版本记录，每条最多 100 项功能。空增量 `records: []` 保留现有缓存；空完整快照清空缓存。刷新失败保留上次成功缓存及时间。
+`nextCursor` 为字符串或 `null`。`null` 表示服务器未提供增量游标，下次客户端重新请求完整快照。本版本不使用分页，不在客户端强加记录数量、功能数量或游标长度上限。空增量 `records: []` 保留现有缓存；空完整快照清空缓存。刷新失败保留上次成功缓存及时间。
 
 功能状态：`unverified` 待验证、`reported` 收到用户报告、`verified` 服务端已确认、`disputed` 有待解决的不同反馈。每项 `reports` 为非负整数。服务端负责状态判定与证据记录；客户端不根据报告数量擅自升级状态。
 
@@ -49,7 +49,7 @@
 }
 ```
 
-必须有明确型号、版本、至少一项功能和 `hardwareConfirmed: true`。功能 ID 去重、排序；备注最长 800 字符。客户端只选择上述公开字段，过滤常见凭据和本机路径，不复制设备序列号、HID 路径或其他设备对象字段。
+必须有明确型号、版本、至少一项功能和 `hardwareConfirmed: true`，它表达用户此次报告确已实测的事实。功能 ID 去重、排序；版本和备注不设客户端长度上限。客户端只选择上述报告字段，不自动复制设备序列号、HID 路径或其他设备对象字段。用户自行填写的备注和排障路径原样保留，不经过关键字遮罩。
 
 服务器应返回 HTTP 201 或 202：
 
@@ -63,7 +63,7 @@
 
 `receivedAt` 可省略。收件成功仅表示报告已接收，不直接把功能标为已验证，也不改变本机确认。服务器必须按 `Idempotency-Key` 去重，相同报告返回同一个 `reportId`。客户端合并当前并发的同报告提交，但跨重启和网络重试的最终去重由服务器负责。
 
-服务器应核对型号、版本、功能是否真实存在，并自行决定账号、匿名投稿、滥用限制和报告复核机制。当前客户端未内置任何服务器账号或共用凭据，也没有实现登录流程；需要鉴权的服务器应先补充双方约定的认证接口，不能直接在客户端打包管理密钥。HTTP 非成功响应由客户端显示错误，网络超时为 15 秒，不自动重试提交。
+服务器按型号、版本和功能记录反馈，是否允许匿名由部署方接口决定；客户端没有强制人工审核步骤。当前未内置服务器账号或共用凭据。HTTP 非成功响应显示真实状态错误，失败后可重试；默认没有总超时，可以主动取消。正常 HTTP 重定向由 fetch 跟随，客户端不限制为固定站点。请求提交不会自动重试，跨网络重试的去重由服务器按 Idempotency-Key 完成。
 
 ## 桌面 API
 
@@ -72,5 +72,6 @@
 - `refreshVerificationServer({ cursor? })` → `{ configured, updated, records, cursor, lastRefresh }`。省略参数沿用缓存游标；传 `cursor: null` 强制完整快照。地址为空时立即返回 `configured: false` 与空结果，不阻塞页面。
 - `submitVerificationServerReport({ modelId, providerVersion, features, notes?, hardwareConfirmed: true })` → `{ reportId, status: "received", receivedAt, scope: "server", serverURL, modelId, providerVersion, features }`。
 - `listServerVerifications()` → 已缓存记录数组，不联网。
+- `cancelVerificationServerRequests()` → 取消当前刷新/提交请求；后续可重新调用。core 对应 `cancelRequests()`。
 
 这些接口通过固定 IPC 调用，只有应用自己的主页面能够使用。测试使用替代网络函数，不部署服务器，不向真实地址提交测试报告。

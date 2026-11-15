@@ -36,9 +36,9 @@ test('scan does not ask permission and close during enumeration cannot open a la
 test('timeout shuts down the interface so an old feature response cannot satisfy a later command',async()=>{
  const device=new Device();device.receiveFeatureReport=()=>new Promise(()=>{});const session=new MouseSession(device,support,{timeoutMs:15});await assert.rejects(session.status(),/超时/);assert.equal(device.opened,false);await assert.rejects(session.status(),/关闭/);
 });
-test('an owned interface that opens after its timeout and close is released without sending a command',async()=>{
+test('OS opening is not on the report deadline; explicit cancellation releases a late interface',async()=>{
  let release,closed=0;const device=new Device();device.open=()=>new Promise(resolve=>{release=()=>{device.opened=true;resolve();};});device.close=async()=>{closed++;device.opened=false;};
- const session=new MouseSession(device,support,{timeoutMs:5});await assert.rejects(session.status(),/超时/);await session.close();release();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.opened,false);assert.equal(closed,1);assert.equal(device.frames.length,0);
+ const session=new MouseSession(device,support,{timeoutMs:5});let settled=false;const pending=session.status();pending.finally(()=>{settled=true;}).catch(()=>{});await new Promise(resolve=>setTimeout(resolve,15));assert.equal(settled,false);await session.close();await assert.rejects(pending,/关闭/);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.opened,false);assert.equal(closed,1);assert.equal(device.frames.length,0);
 });
 test('timeouts and closing do not release an interface opened by another owner',async()=>{
  const device=new Device();device.opened=true;let closed=0;device.close=async()=>{closed++;device.opened=false;};device.receiveFeatureReport=()=>new Promise(()=>{});const session=new MouseSession(device,support,{timeoutMs:5});await assert.rejects(session.status(),/超时/);await session.close();assert.equal(device.opened,true);assert.equal(closed,0);

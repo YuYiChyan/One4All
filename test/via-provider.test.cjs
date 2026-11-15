@@ -36,3 +36,13 @@ test('timeout closes transport so stale responses cannot authorize later writes'
   await assert.rejects(transport.request(1),/没有响应/);assert.equal(transport.isClosed(),true);
   await assert.rejects(transport.request(5,[0,0,0,0,4]),/断开/);
 });
+test('physical disconnect publishes state change and can reconnect with the same model',async()=>{
+ const device=new Device(),hid=hidFor(device),session=await connect({definition,hid});let seen=0;session.onDisconnect(()=>seen++);
+ const event=new Event('disconnect');event.device=device;hid.dispatchEvent(event);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(session.device.connected,false);assert.equal(seen,1);const next=await connect({definition,hid});await next.close();
+});
+test('cancelling while the OS opens VIA settles promptly and closes only the late result',async()=>{
+ const device=new Device(),controller=new AbortController();let release;device.open=async()=>{await new Promise(resolve=>release=resolve);device.opened=true;};
+ const pending=connect({definition,hid:hidFor(device),signal:controller.signal});await new Promise(resolve=>setImmediate(resolve));controller.abort();await assert.rejects(pending,{name:'AbortError'});
+ release();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.opened,false);assert.equal(device.calls.length,0);
+});

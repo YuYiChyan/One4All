@@ -15,9 +15,11 @@ test('different brands remain independent; failure releases its job for retry',a
  fake.children[1].emit('message',{ok:true,brand:'dareu',count:7,counts:{dareu:7}});assert.equal((await dareu).count,7);
  const retry=refresh.run('rapoo');assert.equal(fake.children.length,3);fake.children[2].emit('message',{ok:true,brand:'rapoo',count:76});assert.equal((await retry).count,76);await assert.rejects(refresh.run('unknown'),/未知品牌/);refresh.close();
 });
-test('closing and timing out terminate only their pending refreshes',async()=>{
+test('closing terminates only its pending refreshes',async()=>{
  const fake=processDouble(),refresh=createResourceRefresh(fake),pending=refresh.run('aula'),rejected=assert.rejects(pending,/停止/);refresh.close();await rejected;assert.equal(fake.children[0].killed,true);
- const second=processDouble(),timed=createResourceRefresh({...second,timeoutMs:5});await assert.rejects(timed.run('melgeek'),/超时/);assert.equal(second.children[0].killed,true);
+});
+test('cancelling a shared ATK refresh stops that family while another brand continues',async()=>{
+ const fake=processDouble(),refresh=createResourceRefresh(fake),atk=refresh.run('atk'),vxe=refresh.run('vxe'),rapoo=refresh.run('rapoo');const rejected=[assert.rejects(atk,/停止/),assert.rejects(vxe,/停止/)];assert.equal(refresh.cancel('vgn').cancelled,true);await Promise.all(rejected);assert.equal(fake.children[0].killed,true);assert.notEqual(fake.children[1].killed,true);fake.children[1].emit('message',{ok:true,count:3});assert.equal((await rapoo).count,3);assert.equal(refresh.cancel('atk').cancelled,false);refresh.close();
 });
 test('ATK worker reads separate completed catalogues rather than the aggregate count',async()=>{
  const calls=[],root=path.resolve('fixture-resources'),counts={atk:18,vxe:4,vgn:7};const result=await refreshResources('vxe',{resourceRoot:root,load(file){calls.push(file);return {main:async options=>{assert.equal(options.resourceRoot,root);return {models:29,errors:[]};}};},readCatalog(file){return {devices:new Array(counts[path.basename(path.dirname(file))])};}});

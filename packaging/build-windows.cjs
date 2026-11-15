@@ -84,7 +84,7 @@ function ensureNsis(explicit){
  if(explicit)return path.resolve(explicit);
  const root=path.join(process.env.LOCALAPPDATA,'One4All-Desktop/build-tools'),archive=path.join(root,'nsis-'+NSIS.version+'.zip'),compiler=path.join(root,'nsis-'+NSIS.version,'makensis.exe');
  fs.mkdirSync(root,{recursive:true});
- if(!fs.existsSync(archive))execFileSync('curl.exe',['--fail','--location','--connect-timeout','20','--max-time','180','--silent','--show-error',NSIS.url,'--output',archive],{windowsHide:true,stdio:'inherit',timeout:190000});
+ if(!fs.existsSync(archive)){const partial=archive+'.part';execFileSync('curl.exe',['--fail','--location','--silent','--show-error',NSIS.url,'--output',partial],{windowsHide:true,stdio:'inherit'});fs.renameSync(partial,archive);}
  if(hash(archive)!==NSIS.sha256)throw Error('NSIS archive differs from the pinned official portable archive');
  if(!fs.existsSync(compiler)){const script='Expand-Archive -LiteralPath '+quotePs(archive)+' -DestinationPath '+quotePs(root)+' -Force';execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,stdio:'inherit'});}
  return compiler;
@@ -97,7 +97,7 @@ function compile(options={}){
  for(const directory of [...directories].sort((a,b)=>b.length-a.length))uninstall.push('RMDir "$INSTDIR\\'+nsisEscape(directory)+'"');
  write(path.join(dist,'install-files.nsh'),'\ufeff'+install.join('\r\n')+'\r\n');write(path.join(dist,'uninstall-files.nsh'),'\ufeff'+uninstall.join('\r\n')+'\r\n');
  const output=path.join(dist,'One4All-Setup-'+metadata.version+'.exe'),productVersion=metadata.version.split('-')[0]+'.0';
- execFileSync(compiler,['/INPUTCHARSET','UTF8','/V3','/DAPP_VERSION='+metadata.version,'/DPRODUCT_VERSION='+productVersion,'/DOUTPUT_FILE='+output,'/DAPP_ICON='+path.join(stage,'resources/app/app/assets/one4all.ico'),'/DINSTALL_FILES='+path.join(dist,'install-files.nsh'),'/DUNINSTALL_FILES='+path.join(dist,'uninstall-files.nsh'),'/DESTIMATED_KB='+Math.ceil(files.reduce((sum,file)=>sum+fs.statSync(file).size,0)/1024),path.join(__dirname,'one4all.nsi')],{windowsHide:true,stdio:'inherit',timeout:15*60000});
+ execFileSync(compiler,['/INPUTCHARSET','UTF8','/V3','/DAPP_VERSION='+metadata.version,'/DPRODUCT_VERSION='+productVersion,'/DOUTPUT_FILE='+output,'/DAPP_ICON='+path.join(stage,'resources/app/app/assets/one4all.ico'),'/DINSTALL_FILES='+path.join(dist,'install-files.nsh'),'/DUNINSTALL_FILES='+path.join(dist,'uninstall-files.nsh'),'/DESTIMATED_KB='+Math.ceil(files.reduce((sum,file)=>sum+fs.statSync(file).size,0)/1024),path.join(__dirname,'one4all.nsi')],{windowsHide:true,stdio:'inherit'});
  const digest=hash(output),artifact={file:path.basename(output),bytes:fs.statSync(output).size,sha256:digest};
  write(path.join(dist,path.basename(output)+'.sha256'),digest+'  '+path.basename(output)+'\n');
  const manifest={schema:1,version:metadata.version,productVersion,platform:'win32',arch:'x64',createdAt:new Date().toISOString(),installer:{engine:'NSIS',version:NSIS.version,scope:'current-user',silentSwitch:'/S',uninstaller:'Uninstall.exe',preservesUserDataByDefault:true},artifacts:[artifact],seed:JSON.parse(fs.readFileSync(path.join(dist,'stage-manifest.json'),'utf8')),published:false,installedOnBuildMachine:false};

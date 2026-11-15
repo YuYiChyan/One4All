@@ -1,9 +1,10 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {fetchResource,safeResourcePath}=require('../core/resource-refresh-network.cjs');
 const ORIGIN='https://inputdrv.com/Attack-Shark/',OFFICIAL='https://attackshark.cn/system.aspx?ClassID=18',sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 async function extract({outputRoot=path.join(process.env.LOCALAPPDATA,'One4All-Desktop/vendor-resources/attackshark'),offline=false,updateRegistry=true}={}){
  const sourceRoot=path.join(outputRoot,'source');fs.mkdirSync(sourceRoot,{recursive:true});
- async function resource(url,name){const file=path.join(sourceRoot,name);if(offline&&fs.existsSync(file))return fs.readFileSync(file);const response=await fetch(url,{signal:AbortSignal.timeout(30000)});if(!response.ok)throw Error(url+': '+response.status);const data=Buffer.from(await response.arrayBuffer());fs.writeFileSync(file,data);return data;}
+ async function resource(url,name){const file=safeResourcePath(sourceRoot,name);if(offline&&fs.existsSync(file))return fs.readFileSync(file);const {bytes:data}=await fetchResource(url);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,data);return data;}
  const html=(await resource(ORIGIN,'inputdrv.html')).toString(),bundle=html.match(/src="([^"]*\/app\/page-[^"]+\.js)"/)[1],script=await resource(new URL(bundle,ORIGIN).href,'input-'+bundle.split('/').pop()),text=script.toString(),objects=[];
  for(const m of text.matchAll(/([\w$]+)=JSON\.parse\('((?:\\.|[^'\\])*)'\)/g)){const value=JSON.parse(m[2].replace(/\\'/g,"'").replace(/\\\\/g,'\\'));if(value.deviceId||value.products)objects.push(value);}
  const products=objects.find(o=>o.products)?.products;if(!products)throw Error('原厂型号表格式已改变');

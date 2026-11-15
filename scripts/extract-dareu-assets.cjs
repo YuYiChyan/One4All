@@ -1,9 +1,10 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {fetchResource,safeResourcePath}=require('../core/resource-refresh-network.cjs');
 const ORIGIN='https://dr.dareu.com',sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 async function extract({outputRoot=path.join(process.env.LOCALAPPDATA,'One4All-Desktop/vendor-resources/dareu'),offline=false,updateRegistry=true}={}){
  const sourceRoot=path.join(outputRoot,'source');fs.mkdirSync(sourceRoot,{recursive:true});
- async function fetchFile(relative,local){const file=path.join(sourceRoot,local||relative);if(offline&&fs.existsSync(file))return fs.readFileSync(file);const response=await fetch(ORIGIN+'/'+relative,{signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error(relative+': '+response.status);const buffer=Buffer.from(await response.arrayBuffer());fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,buffer);return buffer;}
+ async function fetchFile(relative,local){const file=safeResourcePath(sourceRoot,local||relative);if(offline&&fs.existsSync(file))return fs.readFileSync(file);const {bytes:buffer}=await fetchResource(ORIGIN+'/'+relative);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,buffer);return buffer;}
  const bootstrap=await fetchFile('js/global.js?v=1.3.26','global.js'),protocolSource=await fetchFile('js/device/tgdevice.js?v=1.3.26','tgdevice.js');
  const ids=JSON.parse(bootstrap.toString().match(/AVAILABLE_PID_LIST=(\[[^\]]+\])/)[1]),rows=[],errors=[];let index=0;
  await Promise.all(Array.from({length:8},async()=>{while(index<ids.length){const pid=ids[index++],hex=pid.toString(16).padStart(4,'0').toUpperCase();try{const data=JSON.parse((await fetchFile(`products/${hex}/${hex}.json`)).toString());rows.push({pid,hex,data});}catch(error){errors.push({pid,error:error.message});}}}));

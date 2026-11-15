@@ -10,11 +10,11 @@
  function normalizeResponse(value){const b=value instanceof DataView?new Uint8Array(value.buffer,value.byteOffset,value.byteLength):Uint8Array.from(value);return b.length===65?b.slice(1):(b[0]&15)?b:b.slice(1);}
  class Handle{
   constructor(device,reportId,{timeoutMs=1800}={}){this.device=device;this.reportId=reportId;this.timeoutMs=timeoutMs;this.queue=Promise.resolve();this.closed=false;this.owned=!device.opened;}
-  command(target,group,command,size,profile=0,payload=[]){const run=async()=>{if(this.closed)throw Error('设备页面已关闭');let timer;
-   const operation=(async()=>{if(!this.device.opened)await this.device.open();if(this.closed){if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw Error('设备页面已关闭');}await this.device.sendFeatureReport(this.reportId,frame(target,group,command,size,profile,payload));for(let i=0;i<20;i++){if(this.closed)throw Error('设备连接已结束');const b=normalizeResponse(await this.device.receiveFeatureReport(this.reportId));if(b.length>=6&&(b[0]&15)===2&&b[2]===group&&b[3]===command&&(b[0]&240)===target)return b;await wait(10);}throw Error('设备没有确认本次命令');})();
-   try{return await Promise.race([operation,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('达尔优设备响应超时')),this.timeoutMs);})]);}catch(error){this.closed=true;if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw error;}finally{clearTimeout(timer);}
+  command(target,group,command,size,profile=0,payload=[]){const run=async()=>{if(this.closed)throw Error('设备页面已关闭');let timer;const stopped=new Promise((_,reject)=>{this.cancel=reject;});
+   const operation=(async()=>{if(!this.device.opened)await this.device.open();if(this.closed){if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw Error('设备页面已关闭');}timer=setTimeout(()=>this.cancel?.(Error('达尔优设备响应超时')),this.timeoutMs);await this.device.sendFeatureReport(this.reportId,frame(target,group,command,size,profile,payload));for(let i=0;i<20;i++){if(this.closed)throw Error('设备连接已结束');const b=normalizeResponse(await this.device.receiveFeatureReport(this.reportId));if(b.length>=6&&(b[0]&15)===2&&b[2]===group&&b[3]===command&&(b[0]&240)===target)return b;await wait(10);}throw Error('设备没有确认本次命令');})();
+   try{return await Promise.race([operation,stopped]);}catch(error){this.closed=true;if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw error;}finally{this.cancel=null;clearTimeout(timer);}
   };const task=this.queue.then(run,run);this.queue=task.catch(()=>{});return task;}
-  async close(){this.closed=true;await this.queue;if(this.owned&&this.device.opened)await this.device.close();}
+  async close(){this.closed=true;this.cancel?.(Error('设备页面已关闭'));if(this.owned&&this.device.opened)await this.device.close();}
  }
  class MouseSession{
   constructor(handle,protocol,target=0,wireless=false){this.handle=handle;this.protocol=protocol;this.target=target;this.wireless=wireless;this.operations=Promise.resolve();}

@@ -5,7 +5,7 @@ const path = require('node:path');
 function identity(input = {}) {
   const modelId = input.modelId, providerVersion = input.providerVersion;
   for (const [name,value] of [['型号',modelId],['适配器版本',providerVersion]]) {
-    if (typeof value !== 'string' || !value.trim() || value.length > 240 || /[\u0000-\u001f\u007f]/.test(value)) throw new Error('请提供有效的' + name);
+    if (typeof value !== 'string' || !value.trim() || /[\u0000-\u001f\u007f]/.test(value)) throw new Error('请提供有效的' + name);
   }
   return {modelId,providerVersion};
 }

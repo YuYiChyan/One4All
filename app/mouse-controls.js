@@ -6,7 +6,7 @@
   const batteryText=values=>Number.isFinite(values?.battery)?`${values.battery}%${values.charging?' · 充电中':''}`:({8:'满',4:'良好',2:'低',1:'极低',0:'空'}[values?.batteryLevel]||'百分比未提供');
   window.One4AllMouse={render(container,{model,api,provider,notify=()=>{},onBack=()=>{}}){
     const controller=provider||{scan:()=>api.scanRazer(),status:id=>api.razerStatus(id),execute:request=>api.razerExecute(request)};
-    let alive=true,version=0,devices=[],selectedId=null,state=null,busy=false,activeTab='performance',disposal=null;
+    let alive=true,version=0,devices=[],selectedId=null,state=null,busy=false,detecting=false,activeTab='performance',disposal=null;
     const root=node('section','o4-mouse'),sidebar=node('aside','o4-mouse-sidebar'),main=node('div','o4-mouse-main');
     const heading=node('div','o4-mouse-heading'),back=node('button','o4-mouse-back','← 返回支持库');back.type='button';back.onclick=onBack;
     const connection=node('p','o4-mouse-muted','正在检测设备…');heading.append(back,node('h2','',model.name||'鼠标'),connection);
@@ -29,12 +29,12 @@
 
     function current(ticket){return alive&&ticket===version&&root.isConnected;}
     function showError(error){const text=error?.message||String(error);message.textContent=text;message.hidden=false;notify(text);}
-    function busyUI(value){busy=value;for(const control of root.querySelectorAll('input,select,button'))if(!control.classList.contains('o4-mouse-back'))control.disabled=value||control.dataset.readonly==='true';}
+    function busyUI(value){busy=value;selector.disabled=value;rescan.disabled=value&&!(detecting&&controller.cancel);rescan.textContent=value&&detecting&&controller.cancel?'取消检测':'重新检测';for(const control of sidebar.querySelectorAll('button.primary'))control.disabled=value;for(const control of body.querySelectorAll('input,select,button[data-device-control]'))control.disabled=value||control.dataset.readonly==='true';}
     function row(label,value){const result=node('div','o4-mouse-info-row');result.append(node('span','o4-mouse-muted',label),node('span','',String(value)));return result;}
     function card(title){const section=node('section','o4-mouse-setting');section.append(node('h3','',title));return section;}
     function number(label,value,cap){const wrap=node('label','o4-mouse-field'),control=node('input');control.type='number';control.min=String(cap.min);control.max=String(cap.max);control.step=String(cap.step||1);control.value=String(value);if(cap.steps?.length){const updateStep=()=>{const current=Number(control.value),step=cap.steps.find(part=>current>=part.from&&current<=part.to)?.step||cap.step||1;control.step=String(step);control.min=String(Math.ceil(cap.min/step)*step);};control.addEventListener('input',updateStep);updateStep();}wrap.append(node('span','',label),control);return {wrap,control,get(){if(!control.reportValidity()||control.value==='')throw Error('请填写设备允许的数值');return Number(control.value);}};}
     function choices(label,value,items){const wrap=node('label','o4-mouse-field'),control=node('select');for(const item of items){const option=node('option','',item.label);option.value=String(item.value);control.append(option);}control.value=String(value);wrap.append(node('span','',label),control);return {wrap,control,get:()=>Number(control.value)};}
-    function apply(section,label,command,getValue){const button=node('button','primary',label);button.type='button';button.onclick=async()=>{
+    function apply(section,label,command,getValue){const button=node('button','primary',label);button.type='button';button.dataset.deviceControl='true';button.onclick=async()=>{
       if(busy||!selectedId)return;let value;try{value=getValue();}catch(error){showError(error);return;}
       const id=selectedId,ticket=version;message.hidden=true;busyUI(true);
       try{const result=await controller.execute({deviceId:id,command,value});if(!current(ticket)||selectedId!==id)return;if(result?.ok===false)throw Error(result.error||'设备没有确认此设置');state=result;draw();notify('设置已更新');}
@@ -72,22 +72,23 @@
       for(const tab of available){const button=node('button',tab.id===activeTab?'active':'',tab.label);button.type='button';button.setAttribute('aria-current',String(tab.id===activeTab));button.onclick=()=>{activeTab=tab.id;draw();};tabs.append(button);}
       if(state?.connected){connection.textContent=state.values?.battery!==undefined?`已连接 · 电量 ${batteryText(state.values)}`:'已连接';}
       if(activeTab==='performance')performance();else if(activeTab==='lighting')lighting();else information();
+      busyUI(busy);
     }
     function offline(text){tabs.replaceChildren();body.replaceChildren();const box=card('连接鼠标');box.append(node('p','o4-mouse-muted',text));body.append(box);information();connection.textContent='未连接';}
-    async function load(id){const ticket=++version;selectedId=id;state=null;message.hidden=true;busyUI(true);connection.textContent='正在读取…';body.replaceChildren(node('p','o4-mouse-muted','正在读取设备设置…'));tabs.replaceChildren();
+    async function load(id){const ticket=++version;selectedId=id;state=null;message.hidden=true;detecting=true;busyUI(true);connection.textContent='正在读取…';body.replaceChildren();information();tabs.replaceChildren();
       try{const report=await controller.status(id);if(!current(ticket))return;if(report?.ok===false)throw Error(report.error||'读取失败');state=report;draw();if(!report.interfaceConfirmed){connection.textContent='已发现设备';message.textContent='设备暂未返回设置，请重新检测。';message.hidden=false;}}
       catch(error){if(current(ticket)){offline('暂时无法读取设备设置，请确认连接后重新检测。');showError(error);}}
-      finally{if(current(ticket))busyUI(false);}
+      finally{if(current(ticket)){detecting=false;busyUI(false);}}
     }
-    async function scan(){const ticket=++version;state=null;selectedId=null;message.hidden=true;busyUI(true);connection.textContent='正在检测设备…';body.replaceChildren();tabs.replaceChildren();try{
+    async function scan(){const ticket=++version;state=null;selectedId=null;message.hidden=true;detecting=true;busyUI(true);connection.textContent='正在检测设备…';body.replaceChildren();information();tabs.replaceChildren();try{
       const result=await controller.scan();if(!current(ticket))return;if(result?.ok===false)throw Error(result.error||'检测失败');
       devices=(Array.isArray(result)?result:result.devices||[]).filter(device=>device.modelId===model.id);selector.replaceChildren();
       for(const [index,device]of devices.entries()){const option=node('option','',`${device.name}${devices.length>1?' · '+(index+1)+' / '+device.id.slice(-6):''}`);option.value=device.id;selector.append(option);}
       deviceLabel.hidden=devices.length<2;
-      if(!devices.length){offline(controller.connect?'接入这款鼠标或其接收器，然后点击“连接设备”。':'连接这款鼠标或其接收器，然后点击“重新检测”。');return;}
+      if(!devices.length){offline(controller.connect?'接入这款鼠标或其接收器，然后点击“连接设备”。':'连接这款鼠标或其接收器，然后点击“重新检测”。');if(result.errors?.length)showError(Error(result.errors.join('；')));return;}
       await load(devices[0].id);
-    }catch(error){if(current(ticket)){offline('检测没有完成，请重新检测。');showError(error);}}finally{if(current(ticket))busyUI(false);}}
-    selector.onchange=()=>{if(!busy)load(selector.value);};rescan.onclick=()=>{if(!busy)scan();};const ready=scan();
+    }catch(error){if(current(ticket)){offline('检测没有完成，请重新检测。');showError(error);}}finally{if(current(ticket)){detecting=false;busyUI(false);}}}
+    selector.onchange=()=>{if(!busy)load(selector.value);};rescan.onclick=async()=>{if(!busy){void scan();return;}if(!detecting||!controller.cancel)return;const ticket=++version;detecting=false;busyUI(true);try{await controller.cancel();if(current(ticket)){state=null;selectedId=null;offline('已取消检测，可重新检测。');}}catch(error){if(current(ticket))showError(error);}finally{if(current(ticket))busyUI(false);}};const ready=scan();
     return {ready,dispose(){if(disposal)return disposal;alive=false;version++;
       disposal=Promise.allSettled([()=>picker.dispose(),()=>localConfirmation.dispose(),()=>root.remove(),()=>controller.close?.()].map(run=>Promise.resolve().then(run))).then(results=>{for(const result of results)if(result.status==='rejected')console.warn('鼠标页面资源清理失败',result.reason);});return disposal;
     }};

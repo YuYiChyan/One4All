@@ -16,7 +16,8 @@ test('requires actual hardware declaration and selected features; public report 
   assert.throws(()=>service.prepare({...sample,providerVersion:''}),/版本/);
   const report=service.prepare({...sample,notes:'token: ghp_12345678 序列号: private123 C:\\Users\\private\\device.log'});
   assert.equal(report.modelId,sample.model.id);assert.deepEqual(report.checks,['dpi','pollRate']);
-  for(const secret of ['PRIVATE_SERIAL','PRIVATE_HID_PATH','private123','ghp_12345678','C:\\Users']) assert.ok(!report.body.includes(secret),secret);
+  for(const secret of ['PRIVATE_SERIAL','PRIVATE_HID_PATH']) assert.ok(!report.body.includes(secret),secret);
+  assert.ok(report.notes.includes('C:\\Users\\private\\device.log'),'User-entered troubleshooting paths are preserved');
   assert.match(report.body,/其他型号及未测试的功能仍待验证/);
   assert.match(report.body,/支持库型号 ID/);
 });
@@ -37,7 +38,13 @@ test('encrypted token stays out of public configuration, reports, and plaintext 
   const restored=createValidationFeedback({dataRoot:dir,...cryptoCallbacks});assert.equal(restored.config().tokenConfigured,true);
   restored.saveConfig({clearToken:true});assert.equal(restored.config().tokenConfigured,false);
   const session=createValidationFeedback({dataRoot:dir});session.saveConfig({token:'session-secret'});
-  assert.equal(session.config().tokenPersistence,'session');assert.ok(!fs.readFileSync(path.join(dir,'validation-config.json'),'utf8').includes('session-secret'));
+  assert.equal(session.config().tokenPersistence,'local');assert.equal(createValidationFeedback({dataRoot:dir}).config().tokenConfigured,true);
+});
+
+test('saving settings retains an encrypted token when the OS store is unavailable',t=>{
+  const dir=root(t),file=path.join(dir,'validation-config.json');fs.writeFileSync(file,JSON.stringify({encryptedToken:'keep-encrypted-value'}));
+  createValidationFeedback({dataRoot:dir}).saveConfig({});assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).encryptedToken,'keep-encrypted-value');
+  const service=createValidationFeedback({dataRoot:dir,encryptString:()=>{throw Error('unavailable');},decryptString:()=>{throw Error('unavailable');}});service.saveConfig({token:'replacement-fixture-token'});assert.equal(service.config().tokenPersistence,'local');assert.equal(createValidationFeedback({dataRoot:dir}).config().tokenConfigured,true);
 });
 test('a confirmed report posts once even across parallel clicks or restart; forged bodies are ignored',async t=>{
   const dir=root(t);let requests=0,posted;
@@ -54,12 +61,22 @@ test('permission errors are actionable and do not mark the report verified',asyn
   await assert.rejects(service.submit(service.prepare(sample)),/登录凭据无效/);
   assert.equal(service.list()[0].submitted,false);assert.equal(service.list()[0].status,'failed');
 });
-test('uncertain network result prevents an accidental duplicate POST',async t=>{
+test('uncertain network result offers explicit retry without locking the report',async t=>{
   let requests=0;
   const service=createValidationFeedback({dataRoot:root(t),fetchImpl:async()=>{requests++;throw Error('timeout');}});service.saveConfig({token:'test-token'});
   const report=service.prepare(sample);
-  await assert.rejects(service.submit(report),/避免重复提交/);
-  const next=await service.submit(report);assert.equal(next.status,'uncertain');assert.equal(next.submitted,false);assert.equal(requests,1);
+  await assert.rejects(service.submit(report),/可重试提交/);
+  const next=await service.submit(report);assert.equal(next.status,'uncertain');assert.equal(next.retryAvailable,true);assert.equal(next.submitted,false);assert.equal(requests,1);
+  await assert.rejects(service.submit({id:report.id,retry:true}),/可重试提交/);assert.equal(requests,2);
+});
+
+test('cancelled GitHub submissions can be retried and exact user notes are retained',async t=>{
+  let attempts=0;
+  t.mock.method(AbortSignal,'timeout',()=>{throw Error('No fixed deadline');});
+  const service=createValidationFeedback({dataRoot:root(t),fetchImpl:async(_url,{signal})=>{attempts++;if(attempts===1)return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));return {status:201,json:async()=>({number:11,html_url:'https://github.com/YuYiChyan/One4All/issues/11'})};}});
+  service.saveConfig({token:'fixture-token'});const notes='protocol token=0x37\nC:\\device\\protocol.js\n'+ '测试'.repeat(1000),version='v'.repeat(300),report=service.prepare({...sample,notes,providerVersion:version});assert.equal(report.notes,notes);assert.equal(report.providerVersion,version);
+  const pending=service.submit(report),rejected=assert.rejects(pending,/取消/);assert.equal(service.cancelSubmission().cancelled,true);await rejected;
+  assert.equal((await service.submit({id:report.id,retry:true})).submitted,true);assert.equal(attempts,2);
 });
 
 test('repository migration retains legacy history and account settings without replaying old pending feedback',async t=>{

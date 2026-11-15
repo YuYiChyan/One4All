@@ -1,5 +1,6 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {fetchResource,isImage}=require('../core/resource-refresh-network.cjs');
 const catalog=require('../catalog/fgg-protocols.json');
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 async function extract({outputRoot=path.join(process.env.LOCALAPPDATA,'One4All-Desktop/vendor-resources/fgg'),offline=false,fetchImpl=globalThis.fetch}={}){
@@ -14,14 +15,12 @@ async function extract({outputRoot=path.join(process.env.LOCALAPPDATA,'One4All-D
   else if(fs.existsSync(cached))bytes=fs.readFileSync(cached);
   else{
    if(offline)throw Error('缺少 FGG 原厂图片缓存：'+variant.imageFile);
-   const response=await fetchImpl(variant.imageUrl,{signal:AbortSignal.timeout(30000)});
-   if(!response.ok||!response.headers.get('content-type')?.includes('image'))throw Error('FGG 原厂图片下载失败：'+variant.imageFile);
-   bytes=Buffer.from(await response.arrayBuffer());
+   bytes=(await fetchResource(variant.imageUrl,{fetchImpl})).bytes;
   }
-  if(sha(bytes)!==variant.sha256)throw Error('FGG 原厂图片版本已变化：'+variant.imageFile);
-  fs.writeFileSync(file,bytes);images.set(variant.imageUrl,file);
+  if(!isImage(bytes))throw Error('FGG 原厂返回的内容不是商品图：'+variant.imageFile);
+  fs.writeFileSync(file,bytes);images.set(variant.imageUrl,{imagePath:file,sha256:sha(bytes)});
  }
- const devices=catalog.models.map(model=>({...model,variants:model.variants.map(variant=>({...variant,imagePath:images.get(variant.imageUrl)}))}));
+ const devices=catalog.models.map(model=>({...model,variants:model.variants.map(variant=>({...variant,...images.get(variant.imageUrl)}))}));
  const result={schema:1,brand:'fgg',source:catalog.source,generatedAt:new Date().toISOString(),stats:{models:devices.length,products:new Set(devices.map(d=>d.name)).size,images:images.size,variants:devices.reduce((n,d)=>n+d.variants.length,0)},devices};
  fs.writeFileSync(path.join(outputRoot,'catalog.json'),JSON.stringify(result,null,2));return result;
 }

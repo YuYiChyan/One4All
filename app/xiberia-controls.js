@@ -57,7 +57,7 @@
     const n=card('设备信息');row(n,'设备',model.name);row(n,'连接方式','USB');row(n,'控制组件','X HUB 原生接口');
     const verification=el('div','o4-xiberia-actions');n.append(verification);if(window.One4AllLocalVerification)localBadge=window.One4AllLocalVerification.mount(verification,{model,api,notify});
     if(window.One4AllValidation){const report=button('提交验证反馈',()=>{feedback?.dispose();feedback=window.One4AllValidation.open({model,providerVersion:model.support?.version,availableChecks:['volume','microphone','equalizer'],api,notify});});verification.append(report);}
-    const actions=el('div','o4-xiberia-actions'),official=button('打开官方 APP',()=>write('openOfficialApp'));official.disabled=busy;actions.append(official);
+    const actions=el('div','o4-xiberia-actions'),official=button('打开官方 APP',async()=>{try{await api.openOfficial('xiberia');}catch(failure){if(alive){error=failure.message||String(failure);render();}}});actions.append(official);
     if(!effects?.ready&&api.downloadPackage&&api.installPackage){const install=button('安装音效组件',async()=>{if(busy)return;busy=true;render();try{await api.downloadPackage('xiberia');await api.installPackage('xiberia');if(alive)notice='音效组件安装流程已启动';}catch(failure){if(alive)error=failure.message||String(failure);}finally{busy=false;if(alive)render();}});install.disabled=busy;actions.append(install);}
     n.append(actions);
    }

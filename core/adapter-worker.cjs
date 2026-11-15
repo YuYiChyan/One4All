@@ -1,12 +1,14 @@
 'use strict';
-let adapter;
+const {pathToFileURL}=require('node:url');
+let adapter,initializing,closing=false;
+async function load(entry){try{return require(entry);}catch(error){if(!['ERR_REQUIRE_ESM','ERR_REQUIRE_ASYNC_MODULE'].includes(error.code))throw error;return import(pathToFileURL(entry).href);}}
 process.parentPort.on('message',async({data})=>{
  const {requestId,method,args}=data;
  try{
   let result;
-  if(method==='init'){const mod=require(args.entry);if(typeof mod.createAdapter!=='function')throw Error('模块缺少 createAdapter');adapter=await mod.createAdapter({packageRoot:args.packageRoot,device:args.device});if(typeof adapter?.probe!=='function'||typeof adapter?.execute!=='function')throw Error('模块缺少 probe 或 execute');result=await adapter.probe();}
-  else if(method==='execute'){if(!adapter)throw Error('模块未启动');result=await adapter.execute(args.command,args.payload);}
-  else if(method==='close'){await adapter?.close?.();result={ok:true};}
+  if(method==='init'){if(closing)throw Error('模块已停止');initializing=(async()=>{const mod=await load(args.entry);if(typeof mod.createAdapter!=='function')throw Error('模块缺少 createAdapter');adapter=await mod.createAdapter({packageRoot:args.packageRoot,device:args.device});if(typeof adapter?.probe!=='function'||typeof adapter?.execute!=='function')throw Error('模块缺少 probe 或 execute');if(closing)throw Error('模块已停止');return adapter.probe();})();result=await initializing;}
+  else if(method==='execute'){if(!adapter||closing)throw Error('模块未启动');result=await adapter.execute(args.command,args.payload);}
+  else if(method==='close'){closing=true;await initializing?.catch(()=>{});await adapter?.close?.();result={ok:true};}
   else throw Error('未知模块操作');
   process.parentPort.postMessage({requestId,result});
   if(method==='close')process.exit(0);

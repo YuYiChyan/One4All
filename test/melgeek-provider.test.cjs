@@ -41,6 +41,10 @@ test('sleep off preserves native interval and NKRO sends actual native booleans'
  const h=harness();await h.session.initialize();await h.session.execute('sleepTimeout.set',{value:0});assert.equal(h.state.settings.sleep_time,5);assert.equal(h.state.settings.use_sleep,false);
  await h.session.execute('nkro.set',{value:false});assert.equal(h.state.settings.use_n_key,false);await h.session.close();
 });
+test('closed MelGeek session immediately reports disconnection to its product page',async()=>{
+ const h=harness();await h.session.initialize();let reason;h.session.onDisconnect(error=>{reason=error;});await h.session.close(Error('USB disconnected'));
+ assert.equal(reason.message,'USB disconnected');assert.equal(h.session.device.connected,false);assert.equal(h.closed,1);
+});
 test('per-key trigger and RT use selected key, native ranges, preserved unrelated RT values',async()=>{
  const h=harness();await h.session.initialize();assert.deepEqual((await h.session.execute('actuation.get',{selection:{key:1}})).value,{key:1,distance:2});
  await h.session.execute('actuation.set',{value:{key:1,distance:1.2}});assert.deepEqual(h.state.perf.key_triggers,[1.5,1.2]);
@@ -87,4 +91,10 @@ test('completed session keeps cancellation active until close removes its listen
  const h=cancellationHarness();let removed=0;const remove=h.controller.signal.removeEventListener.bind(h.controller.signal);h.controller.signal.removeEventListener=(...args)=>{removed++;return remove(...args);};
  const session=await connect(h.options);assert.equal(removed,0);h.controller.abort();await tick();assert.equal(session.connected,false);assert.equal(h.closed,1);assert.equal(removed,1);await session.close();assert.equal(h.closed,1);
  const h2=cancellationHarness();let removed2=0;const remove2=h2.controller.signal.removeEventListener.bind(h2.controller.signal);h2.controller.signal.removeEventListener=(...args)=>{removed2++;return remove2(...args);};const session2=await connect(h2.options);await session2.close();assert.equal(removed2,1);h2.controller.abort();assert.equal(h2.closed,1);
+});
+
+test('physical HID removal closes the MelGeek runtime and the same model can reconnect',async()=>{
+ const h=cancellationHarness(),hid=new EventTarget();hid.requestDevice=h.options.hid.requestDevice;h.options.hid=hid;
+ const session=await connect(h.options);let seen=0;session.onDisconnect(()=>seen++);const event=new Event('disconnect');event.device=device;hid.dispatchEvent(event);await tick();
+ assert.equal(session.device.connected,false);assert.equal(seen,1);assert.equal(h.closed,1);const next=await connect(h.options);assert.equal(next.device.connected,true);await next.close();assert.equal(h.closed,2);
 });

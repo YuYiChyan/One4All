@@ -13,7 +13,7 @@ test('empty configuration and saving an address never contact a server',async t=
   assert.equal(service.config().configured,false);assert.equal((await service.refresh()).configured,false);
   await assert.rejects(service.submit({}),/尚未配置/);
   service.saveConfig({baseURL:'https://example.test/verification/'});assert.equal(service.config().baseURL,'https://example.test/verification');assert.equal(calls,0);
-  assert.throws(()=>serverAddress('https://token@example.test'),/凭据/);assert.throws(()=>serverAddress('https://example.test?key=secret'),/查询参数/);
+  assert.throws(()=>serverAddress('https://token@example.test'),/用户名/);assert.equal(serverAddress('http://localhost:9000/base/?project=one4all'),'http://localhost:9000/base?project=one4all');
 });
 test('refresh persists exact model/version/feature states and sends the cursor on later calls',async t=>{
   const dataRoot=root(t),urls=[];
@@ -37,8 +37,19 @@ test('reports require hardware confirmation and only submit chosen public fields
   await assert.rejects(service.submit({...report,hardwareConfirmed:false}),/实机/);assert.equal(calls,0);
   const [a,b]=await Promise.all([service.submit(report),service.submit(report)]);assert.equal(calls,1);assert.equal(a.reportId,b.reportId);assert.equal(a.status,'received');assert.equal(a.scope,'server');
   assert.equal(request.url,'https://example.test/v1/reports');assert.equal(request.options.method,'POST');assert.match(request.options.headers['Idempotency-Key'],/^[a-f0-9]{64}$/);
-  for(const secret of ['SECRET_SERIAL','SECRET_PATH','ghp_privatevalue'])assert.ok(!request.options.body.includes(secret));
+  for(const secret of ['SECRET_SERIAL','SECRET_PATH'])assert.ok(!request.options.body.includes(secret));
+  assert.equal(JSON.parse(request.options.body).notes,report.notes);
   assert.deepEqual(JSON.parse(request.options.body).features,['dpi','pollRate']);assert.deepEqual(service.list(),[]);
+});
+
+test('configured HTTP path/query, long reports, cancellation and retries are supported',async t=>{
+  const requests=[];let hang=true;
+  t.mock.method(AbortSignal,'timeout',()=>{throw Error('No fixed deadline');});
+  const service=createVerificationServer({dataRoot:root(t),fetchImpl:async(url,options)=>{requests.push({url,options});if(hang)return new Promise((_,reject)=>options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true}));return response({reportId:'report-retry',status:'received'});}});
+  service.saveConfig({baseURL:'http://localhost:9000/base?project=one4all'});
+  const report={modelId:record.modelId,providerVersion:'version-'.repeat(50),features:['dpi'],hardwareConfirmed:true,notes:'C:\\driver\\protocol.js\nprotocol token=0x37\n'+ 'n'.repeat(2000)};
+  const pending=service.submit(report),rejected=assert.rejects(pending,/取消/);service.cancelRequests();await rejected;hang=false;
+  assert.equal((await service.submit(report)).status,'received');assert.equal(requests.length,2);assert.equal(requests[1].url,'http://localhost:9000/base/v1/reports?project=one4all');assert.equal(requests[1].options.redirect,'follow');assert.equal(JSON.parse(requests[1].options.body).notes,report.notes);assert.equal(JSON.parse(requests[1].options.body).providerVersion,report.providerVersion);
 });
 test('invalid server states never replace cached records or imply local confirmation',async t=>{
   const dataRoot=root(t),service=createVerificationServer({dataRoot,fetchImpl:async()=>response({records:[{...record,features:[{id:'dpi',status:'all-models-verified'}]}],nextCursor:'bad'})});

@@ -11,11 +11,12 @@ function getLogitechSupport(model) {
   const match = loadCatalog().models.find(row => row.id === model.id);
   return match ? {...match.support, capabilities: [...match.support.capabilities]} : null;
 }
-function createLogitechService({payloadRoot, stateRoot, resourceRoot, run, timeout = 30000} = {}) {
+function createLogitechService({payloadRoot, stateRoot, resourceRoot, run, timeout = 0} = {}) {
   if (!path.isAbsolute(payloadRoot || '') || !path.isAbsolute(stateRoot || '')) throw TypeError('payloadRoot and stateRoot are required');
   const python = path.join(payloadRoot, 'python', 'python.exe');
   const script = path.join(__dirname, 'logitech-multi_backend.py');
-  let queue = Promise.resolve(), closed = false, child = null;
+  let queue = Promise.resolve(), closed = false, child = null, revision = 0;
+  const cancelled = () => Object.assign(Error('设备检测已取消'), {name:'AbortError'});
   const transport = run || (request => new Promise((resolve, reject) => {
     const args = ['-I', '-B', script, '--payload', payloadRoot, '--state', stateRoot];
     if (resourceRoot) args.push('--resources', resourceRoot);
@@ -32,8 +33,9 @@ function createLogitechService({payloadRoot, stateRoot, resourceRoot, run, timeo
   }));
   function enqueue(request) {
     if (closed) return Promise.reject(Error('罗技设备模块已关闭'));
-    const job = queue.catch(() => {}).then(() => {
+    const ticket=revision;const job = queue.catch(() => {}).then(() => {
       if (closed) throw Error('罗技设备模块已关闭');
+      if (ticket!==revision) throw cancelled();
       return transport(request);
     });
     queue = job;
@@ -51,7 +53,8 @@ function createLogitechService({payloadRoot, stateRoot, resourceRoot, run, timeo
       if (!['dpi.set', 'pollRate.set', 'brightness.set', 'hostMode.set'].includes(command)) return Promise.reject(Error('未开放的罗技设备操作'));
       return enqueue({action: 'execute', deviceId: identity(deviceId), command, value});
     },
-    close() { closed = true; child?.kill(); return queue.catch(() => {}); },
+    cancelPending() { revision++; const current=child;current?.kill();return queue.catch(()=>{}).then(()=>({cancelled:!!current})); },
+    close() { closed = true; revision++;child?.kill(); return queue.catch(() => {}); },
   });
 }
 module.exports = {PROVIDER, loadCatalog, getLogitechSupport, createLogitechService};

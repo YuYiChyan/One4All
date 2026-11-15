@@ -13,16 +13,8 @@ const CHECKS = Object.freeze({
   debounce:'消抖设置', sleep:'休眠设置', connection:'连接与设备识别'
 });
 
-function clean(value, maxLength = 160) {
-  return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/[<>`|]/g,'').trim().slice(0,maxLength);
-}
-function publicText(value, maxLength) {
-  return clean(value,maxLength)
-    .replace(/(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]+/g,'[已隐藏凭据]')
-    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g,'[已隐藏凭据]')
-    .replace(/(?:api[_ -]?key|token|password|secret|序列号|serial(?:number)?|s\/n)\s*[:=：]\s*[^\s,，;；]+/gi,'[已隐藏私密字段]')
-    .replace(/(?:\\\\\?\\|[a-zA-Z]:\\)[^\s,，;；]+/g,'[已隐藏本机路径]');
-}
+const publicText = value => String(value ?? '').trim();
+const tableText = value => String(value).replace(/\|/g,'\\|').replace(/[\r\n]+/g,' ');
 function receiptRepository(receipt) {
   if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(receipt.repository || '')) return receipt.repository;
   // Older receipts have no repository field; their original URL is authoritative.
@@ -40,17 +32,23 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
   const receiptsFile = path.join(dataRoot,'validation-receipts.json');
   let stored = {}, token = '', receipts = [];
   try { stored = JSON.parse(fs.readFileSync(configFile,'utf8')); } catch {}
+  if(typeof stored.token==='string')token=stored.token;
   try { const data = JSON.parse(fs.readFileSync(receiptsFile,'utf8')); if (Array.isArray(data)) receipts = data; } catch {}
   if (stored.encryptedToken && decryptString) try { token = decryptString(Buffer.from(stored.encryptedToken,'base64')); } catch {}
-  const prepared = new Map(), inFlight = new Map();
-  const config = () => ({repository:REPOSITORY,tokenConfigured:!!token,tokenPersistence:token ? stored.encryptedToken ? 'encrypted' : 'session' : 'none'});
+  const prepared = new Map(), inFlight = new Map(), controllers = new Map();
+  function cancelSubmission() { const count=controllers.size;for(const controller of controllers.values())controller.abort();return {cancelled:count>0,count}; }
+  const config = () => ({repository:REPOSITORY,tokenConfigured:!!token||!!stored.encryptedToken,tokenPersistence:stored.encryptedToken?'encrypted':token?'local':'none'});
   function saveConfig(input = {}) {
     let nextToken = token;
     if (input.clearToken === true) nextToken = '';
     else if (typeof input.token === 'string' && input.token.trim()) nextToken = input.token.trim();
-    if (nextToken.length > 1024 || /\s/.test(nextToken)) throw new Error('GitHub Token 格式不正确');
-    const next = {};
-    if (nextToken && encryptString && decryptString) next.encryptedToken = Buffer.from(encryptString(nextToken)).toString('base64');
+    if (/\s/.test(nextToken)) throw new Error('GitHub Token 中不能包含空白字符');
+    const next = {...stored},replacingToken=typeof input.token==='string'&&!!input.token.trim();
+    if(input.clearToken===true){delete next.encryptedToken;delete next.token;}
+    else if(nextToken){
+      let encrypted=false;if(encryptString&&decryptString)try{next.encryptedToken=Buffer.from(encryptString(nextToken)).toString('base64');delete next.token;encrypted=true;}catch{}
+      if(!encrypted&&(!stored.encryptedToken||replacingToken)){next.token=nextToken;delete next.encryptedToken;}
+    }
     fs.writeFileSync(configFile,JSON.stringify(next,null,2),{mode:0o600});
     stored = next; token = nextToken;
     return config();
@@ -73,7 +71,7 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     const report = {
       modelId:model.id,modelName:redact(model.name,160),brand:redact(model.brand,60),
       provider:redact(model.support?.provider || model.source?.provider || model.brand,100),
-      providerVersion:redact(providerVersion,100),firmware:redact(input.firmware,100),checks,notes:redact(input.notes,800)
+      providerVersion:redact(providerVersion,100),firmware:redact(input.firmware,100),checks,notes:token?String(input.notes??'').split(token).join('[已隐藏凭据]'):String(input.notes??'')
     };
     // Only public catalog fields are selected; never copy the connected HID device object.
     const id = crypto.createHash('sha256').update(JSON.stringify({repository:REPOSITORY,report})).digest('hex');
@@ -81,12 +79,12 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     const body = [
       '## 用户实机验证报告','',
       '| 项目 | 本次验证 |','| --- | --- |',
-      '| 型号 | ' + report.modelName + ' |',
+      '| 型号 | ' + tableText(report.modelName) + ' |',
       '| 支持库型号 ID | ' + report.modelId + ' |',
-      '| 品牌 | ' + report.brand + ' |',
-      '| 适配器 | ' + report.provider + ' |',
-      '| 适配器版本 | ' + report.providerVersion + ' |',
-      '| 固件版本 | ' + (report.firmware || '未填写') + ' |','',
+      '| 品牌 | ' + tableText(report.brand) + ' |',
+      '| 适配器 | ' + tableText(report.provider) + ' |',
+      '| 适配器版本 | ' + tableText(report.providerVersion) + ' |',
+      '| 固件版本 | ' + tableText(report.firmware || '未填写') + ' |','',
       '### 实际测试通过的功能',...checks.map(id => '- [x] ' + CHECKS[id]),'',
       '我已在上述实物设备上测试所选功能，并确认这些功能正常。未勾选的功能不在本次确认范围内。',
       '', '### 备注',report.notes || '无','',
@@ -96,16 +94,16 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     const url = ISSUE_ROOT + '/new?' + new URLSearchParams({title,body}).toString();
     const result = {...report,id,title,body,url,repository:REPOSITORY};
     prepared.set(id,result);
-    if (prepared.size > 128) prepared.delete(prepared.keys().next().value);
     return structuredClone(result);
   }
   function receiptBase(report) {
     return {id:report.id,repository:REPOSITORY,modelId:report.modelId,modelName:report.modelName,providerVersion:report.providerVersion,checks:report.checks,createdAt:new Date().toISOString()};
   }
-  async function perform(report) {
+  async function perform(report,{retry=false,signal}={}) {
+    if(stored.encryptedToken&&!token)throw new Error('之前保存的系统加密 Token 暂时无法读取。可重新填写 Token 或改用浏览器；原记录仍保留。');
     const previous = receipts.find(item => item.id === report.id && sameRepository(item,REPOSITORY));
     if (previous?.submitted) return {...previous,duplicate:true};
-    if (previous && ['pending','uncertain'].includes(previous.status)) return {...previous,status:'uncertain',submitted:false,message:'上次提交的结果尚未确认，请先在 GitHub 检查是否已生成报告，避免重复发布。'};
+    if (token && !retry && previous && ['pending','uncertain'].includes(previous.status)) return {...previous,status:'uncertain',submitted:false,retryAvailable:true,message:'上次提交未收到结果。可点击“重试提交”，也可在 GitHub 查看是否已收到报告。'};
     if (!token) {
       if (!openExternal) throw new Error('无法打开浏览器，请复制报告到 GitHub 提交');
       await openExternal(report.url);
@@ -117,11 +115,11 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     try {
       response = await fetchImpl('https://api.github.com/repos/' + REPOSITORY + '/issues',{
         method:'POST',redirect:'error',headers:{Accept:'application/vnd.github+json','Content-Type':'application/json',Authorization:'Bearer ' + token,'X-GitHub-Api-Version':'2022-11-28'},
-        body:JSON.stringify({title:report.title,body:report.body}),signal:AbortSignal.timeout(30000)
+        body:JSON.stringify({title:report.title,body:report.body}),signal
       });
     } catch {
       saveReceipt({...pending,status:'uncertain'});
-      throw new Error('未收到 GitHub 的提交结果。请先到仓库的 Issues 检查报告是否已发布，避免重复提交。');
+      throw new Error(signal?.aborted?'提交已取消。GitHub 可能已收到报告，可重试提交或到 Issues 查看。':'未收到 GitHub 的提交结果。可重试提交，或到仓库 Issues 查看报告。');
     }
     if (response.status !== 201) {
       saveReceipt({...pending,status:'failed'});
@@ -133,7 +131,7 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     const issuePattern = new RegExp('^https://github\\.com/' + REPOSITORY + '/issues/[1-9][0-9]*$','i');
     if (!data || !Number.isSafeInteger(data.number) || !issuePattern.test(data.html_url || '')) {
       saveReceipt({...pending,status:'uncertain'});
-      throw new Error('GitHub 已接受报告，但返回的报告链接不完整。请到仓库 Issues 查看，勿重复提交。');
+      throw new Error('GitHub 已接受报告，但返回的报告链接不完整。可在 Issues 查看，也可重试提交。');
     }
     const receipt = {...pending,status:'submitted',submitted:true,url:data.html_url,number:data.number};
     saveReceipt(receipt); return receipt;
@@ -143,10 +141,11 @@ function createValidationFeedback({dataRoot,encryptString,decryptString,fetchImp
     const report = prepared.get(id);
     if (!report) return Promise.reject(new Error('报告预览已失效，请重新打开验证表单'));
     if (inFlight.has(id)) return inFlight.get(id);
-    const promise = perform(report).finally(() => inFlight.delete(id));
+    const controller=new AbortController();controllers.set(id,controller);
+    const promise = perform(report,{retry:input?.retry===true,signal:controller.signal}).finally(() => {inFlight.delete(id);controllers.delete(id);});
     inFlight.set(id,promise); return promise;
   }
-  return {config,saveConfig,prepare,submit,list:() => structuredClone(receipts.map(receipt=>({...receipt,repository:receiptRepository(receipt)}))),checks:() => ({...CHECKS})};
+  return {config,saveConfig,prepare,submit,cancelSubmission,list:() => structuredClone(receipts.map(receipt=>({...receipt,repository:receiptRepository(receipt)}))),checks:() => ({...CHECKS})};
 }
 
 module.exports = {createValidationFeedback,CHECKS,REPOSITORY};

@@ -46,9 +46,9 @@ test('65-byte feature reports strip their report ID and timeouts terminate the i
 test('leaving during permission enumeration cannot create a late open handle',async()=>{
  let release;const device=new Device(),api=createApi({model,hid:{getDevices:()=>new Promise(resolve=>{release=resolve;})}});const job=api.scan();await new Promise(resolve=>setImmediate(resolve));await api.close();release([device]);await assert.rejects(job,/关闭/);assert.equal(device.opened,false);
 });
-test('an owned handle that opens after its timeout and close is released without sending a command',async()=>{
+test('OS opening is not on the report deadline; explicit cancellation releases a late handle',async()=>{
  let release,closed=0;const device=new Device();device.open=()=>new Promise(resolve=>{release=()=>{device.opened=true;resolve();};});device.close=async()=>{closed++;device.opened=false;};
- const handle=new Handle(device,entry.reportId,{timeoutMs:5});await assert.rejects(handle.command(0,0,128,3),/超时/);await handle.close();release();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.opened,false);assert.equal(closed,1);assert.equal(device.frames.length,0);
+ const handle=new Handle(device,entry.reportId,{timeoutMs:5});let settled=false;const pending=handle.command(0,0,128,3);pending.finally(()=>{settled=true;}).catch(()=>{});await new Promise(resolve=>setTimeout(resolve,15));assert.equal(settled,false);await handle.close();await assert.rejects(pending,/关闭/);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.opened,false);assert.equal(closed,1);assert.equal(device.frames.length,0);
 });
 test('timeouts and closing do not release an interface opened by another owner',async()=>{
  const device=new Device();device.opened=true;let closed=0;device.close=async()=>{closed++;device.opened=false;};device.receiveFeatureReport=()=>new Promise(()=>{});const handle=new Handle(device,entry.reportId,{timeoutMs:5});await assert.rejects(handle.command(0,0,128,3),/超时/);await handle.close();assert.equal(device.opened,true);assert.equal(closed,0);

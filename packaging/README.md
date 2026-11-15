@@ -1,6 +1,6 @@
 # One4All Windows 安装包构建
 
-独立源码与发行仓库为 [YuYiChyan/One4All](https://github.com/YuYiChyan/One4All)，当前版本 `0.7.0-preview.3`，发行标签 `v0.7.0-preview.3`。安装产物在 [One4All Releases](https://github.com/YuYiChyan/One4All/releases)发布；构建或安装问题在 [One4All Issues](https://github.com/YuYiChyan/One4All/issues)跟踪。
+独立源码与发行仓库为 [YuYiChyan/One4All](https://github.com/YuYiChyan/One4All)，当前版本 `0.7.0-preview.4`，发行标签 `v0.7.0-preview.4`。安装产物在 [One4All Releases](https://github.com/YuYiChyan/One4All/releases)发布；构建或安装问题在 [One4All Issues](https://github.com/YuYiChyan/One4All/issues)跟踪。
 
 运行 `node packaging/build-windows.cjs prepare` 生成 `dist/win-unpacked`。确认本次页面与启动代码就绪后，运行 `node packaging/build-windows.cjs build` 重新收集代码并生成最终安装包；`compile` 仅重新编译已有 staging。脚本不会运行安装程序或卸载程序。
 
@@ -27,6 +27,6 @@ resources/
 
 输出包括 `One4All-Setup-<version>.exe`、对应 `.sha256`、`artifact-manifest.json` 和可直接启动的 `win-unpacked`。当前构建没有代码签名或自动更新发布步骤；生成产物不等于已在本机执行安装或卸载。
 
-发布时上传同一次构建的安装包、摘要和产物清单，并在说明中区分模拟检查与实机验证。`0.7.0-preview.3` 作为预览版（prerelease）发布，下载文档使用本版标签或 Releases 列表。版本号来自根目录 `package.json`；源码版本、发行标签和安装包版本应一致。现有构建脚本只构建，发布和安装是后续步骤。
+发布时上传同一次构建的安装包、摘要和产物清单，并在说明中区分模拟检查与实机验证。`0.7.0-preview.4` 作为预览版（prerelease）发布，下载文档使用本版标签或 Releases 列表。版本号来自根目录 `package.json`；源码版本、发行标签和安装包版本应一致。现有构建脚本只构建，发布和安装是后续步骤。
 
 [MCHOUSE_for_all 的旧版发行](https://github.com/YuYiChyan/MCHOUSE_for_all/releases)及已固定版本的历史依赖地址继续保留。不要仅因项目迁移替换仍在使用的旧模块下载 URL；只有新仓库中已发布对应文件时才调整依赖来源。

@@ -2,10 +2,11 @@
 const fs=require('node:fs/promises');
 const path=require('node:path');
 
-const OUTPUT_LIMIT=64*1024;
-const READ_LIMIT=2*1024*1024;
-const skipDirectory=/^(?:node_modules|locales|translations|lang|cache|code cache|gpuCache|profiles?|user.?data|logs?|crashpads?|crashdumps?|session storage|local storage|indexeddb|network|cookies|downloads?|temp|tmp|\.git)$/i;
-const hiddenFile=/(?:^|[\\/])(?:one4all[^/\\]*|preferences|local state|cookies|login data|credentials?[^/\\]*|tokens?[^/\\]*|secrets?[^/\\]*|\.env(?:\..*)?)$/i;
+// The caller can opt into size limits. The normal workbench scan keeps all
+// matching interface records and finishes on completion or user cancellation.
+const OUTPUT_LIMIT=Infinity;
+const skipDirectory=/^(?:locales|translations|lang|cache|code cache|gpuCache|user.?data|logs?|crashpads?|crashdumps?|session storage|local storage|indexeddb|cookies|\.git)$/i;
+const hiddenFile=/(?:^|[\\/])(?:preferences|local state|cookies|login data|\.env(?:\..*)?)$/i;
 const interesting=/\.(?:js|cjs|mjs|jsc|proto|idl|dll|node|asar|exe)$|(?:^|[\\/])package\.json$/i;
 const slash=value=>value.split(path.sep).join('/');
 const expand=value=>String(value).replace(/%([^%]+)%/g,(_,key)=>process.env[key]||process.env[Object.keys(process.env).find(item=>item.toLowerCase()===key.toLowerCase())]||'%'+key+'%');
@@ -15,39 +16,40 @@ function summarizeJS(text){
   const aliases=new Map([['ipcRenderer','ipcRenderer'],['ipcMain','ipcMain']]);
   // Bundled preloads commonly destructure Electron into short variable names.
   // These entries are syntactic observations, not evaluation of bundled code.
-  for(const match of text.slice(0,4096).matchAll(/\b(ipcRenderer|ipcMain)\s*:\s*([a-zA-Z_$][\w$]*)/g))aliases.set(match[2],match[1]);
+  for(const match of text.matchAll(/\b(ipcRenderer|ipcMain)\s*:\s*([a-zA-Z_$][\w$]*)/g))aliases.set(match[2],match[1]);
   const receivers=[...aliases.keys()].map(value=>value.replace(/[$]/g,'\\$')).join('|');
   const regex=new RegExp('\\b('+receivers+')\\s*\\.\\s*(invoke|sendSync|send|handle|handleOnce|on|once)\\s*\\(\\s*[\x22\x27]([a-zA-Z0-9_.:\\/-]{1,160})[\x22\x27]','g');
-  for(const match of text.matchAll(regex)){const side=aliases.get(match[1]);const key=side+':'+match[2]+':'+match[3];if(seen.has(key))continue;seen.add(key);channels.push({side,operation:match[2],name:match[3]});if(channels.length>=300)break;}
+  for(const match of text.matchAll(regex)){const side=aliases.get(match[1]);const key=side+':'+match[2]+':'+match[3];if(seen.has(key))continue;seen.add(key);channels.push({side,operation:match[2],name:match[3]});}
   for(const match of text.matchAll(/\bexposeInMainWorld\s*\(\s*['"]([a-zA-Z0-9_$.-]{1,100})['"]/g)){if(!bridges.includes(match[1]))bridges.push(match[1]);}
   const mappingRegex=new RegExp('\\b([a-zA-Z_$][\\w$]{0,100})\\s*:\\s*(?:async\\s+)?(?:\\(([^)]{0,180})\\)|([a-zA-Z_$][\\w$]*))\\s*=>\\s*(?:\\w+\\.)?(?:'+receivers+')\\.(invoke|send|sendSync)\\(\\s*[\x22\x27]([a-zA-Z0-9_.:\\/-]{1,160})[\x22\x27]','g');
   for(const match of text.matchAll(mappingRegex)){
     const parameters=(match[2]||match[3]||'').split(',').map(p=>p.trim().match(/^[a-zA-Z_$][\w$]*/)?.[0]).filter(Boolean);
-    mappings.push({method:match[1],parameters,operation:match[4],channel:match[5]});if(mappings.length>=100)break;
+    mappings.push({method:match[1],parameters,operation:match[4],channel:match[5]});
   }
   return {bridges,channels,mappings,bytecodeLoader:/bytecode|\.jsc["']/.test(text)};
 }
 function summarizeSchema(text){
-  // Only schema declarations reach the model, never comments, defaults, or data.
-  return text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g,'').split(/\r?\n/).map(line=>line.trim()).filter(line=>/^(?:syntax\s*=|package\s+|import\s+|service\s+|message\s+|enum\s+|rpc\s+|interface\s+|typedef\s+|(?:repeated\s+|optional\s+)?[\w.<> ,]+\s+\w+\s*=\s*\d+\s*[;{])/.test(line)).join('\n').slice(0,5000);
+  return text.trim();
 }
 function packageMetadata(json){
   const value=JSON.parse(json);const dependencies={};
-  for(const [name,version] of Object.entries(value.dependencies||{}).slice(0,80))if(typeof version==='string')dependencies[name]=version.slice(0,120);
-  const main=String(value.main||'').slice(0,200);
-  return {name:String(value.name||'').slice(0,150),version:String(value.version||'').slice(0,80),main:/one4all/i.test(main)?null:main,localEntryOverride:/one4all/i.test(main),dependencies};
+  for(const [name,version] of Object.entries(value.dependencies||{}))if(typeof version==='string')dependencies[name]=version;
+  return {name:String(value.name||''),version:String(value.version||''),main:String(value.main||''),dependencies};
 }
 
-async function inspectPackage({entry,status={}}={}){
+async function inspectPackage({entry,status={},signal,limits={}}={}){
   if(!entry || typeof entry.id!=='string')throw new TypeError('entry.id is required');
-  const start=Date.now(),deadline=start+14500;
+  const start=Date.now();
   const evidence={schema:1,brandId:entry.id,name:entry.name||entry.brand||entry.id,collectedAt:new Date().toISOString(),sources:[],files:[],packages:[],interfaces:[],schemas:[],knownBackend:[],limitations:[],truncated:false,hardwareVerified:false};
-  let visited=0,inputBytes=0;
-  const check=()=>{if(Date.now()>deadline){evidence.truncated=true;throw Error('SCAN_DEADLINE');}};
+  let inputBytes=0;
+  const readLimit=limits.maxTextBytes??Infinity,totalReadLimit=limits.maxInputBytes??Infinity,outputLimit=limits.maxOutputBytes??Infinity;
+  for(const value of [readLimit,totalReadLimit,outputLimit])if(!(value>0))throw Error('扫描上限应为正数');
+  const check=()=>signal?.throwIfAborted();
   const exists=async file=>{try{const s=await fs.lstat(file);return s;}catch{return null;}};
-  async function readChunk(file,length=READ_LIMIT,offset=0){check();if(inputBytes>24*1024*1024)throw Error('SCAN_READ_LIMIT');const handle=await fs.open(file,'r');try{const buffer=Buffer.alloc(Math.min(length,8*1024*1024));const result=await handle.read(buffer,0,buffer.length,offset);inputBytes+=result.bytesRead;return buffer.subarray(0,result.bytesRead);}finally{await handle.close();}}
+  async function readChunk(file,length=readLimit,offset=0){check();const handle=await fs.open(file,'r');try{const size=(await handle.stat()).size,requested=Math.min(length,Math.max(0,size-offset));if(inputBytes+requested>totalReadLimit)throw Error('SCAN_READ_LIMIT');const buffer=Buffer.alloc(requested);let bytesRead=0;while(bytesRead<buffer.length){check();const part=await handle.read(buffer,bytesRead,buffer.length-bytesRead,offset+bytesRead);if(!part.bytesRead)break;bytesRead+=part.bytesRead;}inputBytes+=bytesRead;return buffer.subarray(0,bytesRead);}finally{await handle.close();}}
   function identify(kind,file,note){if(!evidence.knownBackend.some(item=>item.kind===kind))evidence.knownBackend.push({kind,evidence:file,note});}
   function addSourceText(relative,buffer,declaredSize){
+    if(declaredSize>buffer.length){evidence.truncated=true;evidence.limitations.push(relative+' 按调用方指定的文本上限读取了部分内容。');}
     const text=buffer.toString('utf8');
     if(relative.endsWith('package.json')){
       try{const metadata=packageMetadata(text);evidence.packages.push({path:relative,...metadata});if(metadata.dependencies.electron || /electron|mchose|razer/i.test(metadata.name))identify('electron-app',relative,'应用包元数据；不代表硬件接口可独立调用');}catch{}
@@ -64,30 +66,30 @@ async function inspectPackage({entry,status={}}={}){
     try{
       const first=await readChunk(file,16);if(first.length<16)return;
       const headerSize=first.readUInt32LE(4),jsonSize=first.readUInt32LE(12);
-      if(jsonSize>8*1024*1024||jsonSize<2||headerSize<jsonSize+8){evidence.limitations.push(relative+' 的 ASAR 索引超过本次读取上限');return;}
+      if(jsonSize<2||headerSize<jsonSize+8||16+jsonSize>(await fs.stat(file)).size){evidence.limitations.push(relative+' 的 ASAR 索引长度无效');return;}
       const header=JSON.parse((await readChunk(file,jsonSize,16)).toString('utf8'));
       const nodes=[];
-      function collect(files,prefix=''){for(const [name,node] of Object.entries(files||{})){if(nodes.length>=800)return;const item=prefix+name;if(skipDirectory.test(name)||hiddenFile.test(item)||node.link)continue;if(node.files)collect(node.files,item+'/');else if(interesting.test(item))nodes.push({path:item,...node});}}
-      collect(header.files);identify('electron-asar',relative,'已只读解析 ASAR 文件索引及有限的脚本文本');
+      function collect(files,prefix=''){for(const [name,node] of Object.entries(files||{})){check();const item=prefix+name;if(skipDirectory.test(name)||hiddenFile.test(item)||node.link)continue;if(node.files)collect(node.files,item+'/');else if(interesting.test(item))nodes.push({path:item,...node});}}
+      collect(header.files);identify('electron-asar',relative,'已解析 ASAR 文件索引及匹配的脚本文本');
       nodes.sort((a,b)=>priority(a.path)-priority(b.path));
-      for(const node of nodes.slice(0,220)){
+      for(const node of nodes){
         check();const virtual=relative+'!/'+node.path;
-        if(evidence.files.length<500)evidence.files.push({path:virtual,bytes:node.size||0,container:'asar'});
+        evidence.files.push({path:virtual,bytes:node.size||0,container:'asar'});
         if(!shouldRead(node.path))continue;
         if(node.unpacked){const unpacked=path.resolve(file+'.unpacked',node.path);if(!unpacked.startsWith(path.resolve(file+'.unpacked')+path.sep))continue;const info=await exists(unpacked);if(info?.isFile())addSourceText(virtual,await readChunk(unpacked),info.size);}
-        else if(/^\d+$/.test(String(node.offset))&&Number.isFinite(node.size))addSourceText(virtual,await readChunk(file,Math.min(READ_LIMIT,node.size),8+headerSize+Number(node.offset)),node.size);
+        else if(/^\d+$/.test(String(node.offset))&&Number.isFinite(node.size))addSourceText(virtual,await readChunk(file,Math.min(readLimit,node.size),8+headerSize+Number(node.offset)),node.size);
       }
-    }catch(error){if(error.message==='SCAN_DEADLINE')throw error;evidence.limitations.push(relative+' 的只读 ASAR 摘要未完成：'+error.message.slice(0,100));}
+    }catch(error){check();evidence.limitations.push(relative+' 的只读 ASAR 摘要未完成：'+error.message.slice(0,100));}
   }
   function priority(file){return /preload/i.test(file)?0:/package\.json$/.test(file)?1:/\.(proto|idl)$/.test(file)?2:/main.*\.(js|cjs)$|(?:^|\/)index\.(js|cjs)$/.test(file)?3:/\.asar$/.test(file)?4:5;}
-  function shouldRead(file){return /package\.json$|\.(proto|idl)$/.test(file)||(/\.(?:js|cjs|mjs)$/.test(file)&&/(?:preload|bridge|ipc|main|service|protocol|(?:^|\/)index\.)/i.test(file));}
+  function shouldRead(file){return /package\.json$|\.(?:proto|idl|js|cjs|mjs)$/i.test(file);}
   async function inspectRoot(root,sourceId){
     const queue=[{dir:root,depth:0}],files=[];
-    while(queue.length && visited<2500){check();const current=queue.shift();let entries;try{entries=await fs.readdir(current.dir,{withFileTypes:true});}catch{continue;}
-      for(const item of entries){visited++;if(visited>2500){evidence.truncated=true;break;}if(item.isSymbolicLink()||hiddenFile.test(item.name))continue;const full=path.join(current.dir,item.name);if(item.isDirectory()){if(current.depth<7&&!skipDirectory.test(item.name))queue.push({dir:full,depth:current.depth+1});}else if(item.isFile()&&interesting.test(item.name))files.push(full);}
+    while(queue.length){check();const current=queue.shift();let entries;try{entries=await fs.readdir(current.dir,{withFileTypes:true});}catch{continue;}
+      for(const item of entries){check();if(item.isSymbolicLink()||hiddenFile.test(item.name))continue;const full=path.join(current.dir,item.name);if(item.isDirectory()){if(!skipDirectory.test(item.name))queue.push({dir:full,depth:current.depth+1});}else if(item.isFile()&&interesting.test(item.name))files.push(full);}
     }
     files.sort((a,b)=>priority(a)-priority(b));
-    for(const file of files){check();const info=await exists(file);if(!info?.isFile())continue;const relative=sourceId+'/'+slash(path.relative(root,file));if(evidence.files.length<500)evidence.files.push({path:relative,bytes:info.size});else evidence.truncated=true;
+    for(const file of files){check();const info=await exists(file);if(!info?.isFile())continue;const relative=sourceId+'/'+slash(path.relative(root,file));evidence.files.push({path:relative,bytes:info.size});
       if(/\.(?:dll|node)$/i.test(file))identify('native-libraries',relative,'存在本机库文件；未加载 DLL，未确认导出函数或调用约定');
       if(/\.jsc$/i.test(file))identify('v8-bytecode',relative,'发现编译字节码，仅记录路径与大小');
       if(/\.asar$/i.test(file))await inspectAsar(file,relative);
@@ -100,11 +102,11 @@ async function inspectPackage({entry,status={}}={}){
     for(let i=tail.length-22;i>=0;i--)if(tail.readUInt32LE(i)===0x06054b50){at=i;break;}
     if(at<0)return [];
     const centralSize=tail.readUInt32LE(at+12),offset=tail.readUInt32LE(at+16);
-    if(centralSize>READ_LIMIT||offset+centralSize>info.size)return [];
+    if(offset+centralSize>info.size)return [];
     const central=await readChunk(file,centralSize,offset),items=[];let cursor=0;
-    while(cursor+46<=central.length&&central.readUInt32LE(cursor)===0x02014b50&&items.length<50){
+    while(cursor+46<=central.length&&central.readUInt32LE(cursor)===0x02014b50){check();
       const nameSize=central.readUInt16LE(cursor+28),extraSize=central.readUInt16LE(cursor+30),commentSize=central.readUInt16LE(cursor+32);const name=central.subarray(cursor+46,cursor+46+nameSize).toString('utf8');
-      if(!hiddenFile.test(name))items.push({path:name.slice(0,400),bytes:central.readUInt32LE(cursor+24)});cursor+=46+nameSize+extraSize+commentSize;
+      if(!hiddenFile.test(name))items.push({path:name,bytes:central.readUInt32LE(cursor+24)});cursor+=46+nameSize+extraSize+commentSize;
     }return items;
   }
   try{
@@ -122,9 +124,9 @@ async function inspectPackage({entry,status={}}={}){
       else {const header=await readChunk(file,64);download.format=header[0]===0x4d&&header[1]===0x5a?'windows-executable':'unknown';}
       evidence.sources.push(download);evidence.limitations.push('安装包仅提取结构或文件元数据；没有执行安装器，也没有从下载完成推定已支持硬件。');
     }}
-  }catch(error){evidence.truncated=true;evidence.limitations.push(error.message==='SCAN_DEADLINE'?'达到 15 秒扫描预算，返回已取得证据。':error.message==='SCAN_READ_LIMIT'?'达到文本读取预算，返回已取得证据。':'部分文件读取失败：'+error.message.slice(0,160));}
+  }catch(error){check();evidence.truncated=true;evidence.limitations.push(error.message==='SCAN_READ_LIMIT'?'达到文本读取预算，返回已取得证据。':'部分文件读取失败：'+error.message.slice(0,160));}
   if(!evidence.sources.some(source=>source.type==='installed-application'))evidence.limitations.push('没有找到已安装的应用目录，无法确认真实 preload、服务端实现或设备协议。');
-  if(!evidence.interfaces.length&&!evidence.schemas.length)evidence.limitations.push('本次没有提取到可用接口声明；需要进一步拆包或由开发者补充协议资料，不能据此生成可运行硬件适配。');
+  if(!evidence.interfaces.length&&!evidence.schemas.length)evidence.limitations.push('本次摘要没有提取到接口声明；可结合用户补充资料、源码或进一步拆包继续适配。');
   if(evidence.knownBackend.some(item=>item.kind==='v8-bytecode'))evidence.limitations.push('存在 JSC 字节码，IPC 名称可作为索引，但处理逻辑与参数结构尚未完整取得。');
   if(entry.id==='razer'){
     try{
@@ -140,13 +142,7 @@ async function inspectPackage({entry,status={}}={}){
   evidence.limitations.push('所有接口条目均为静态证据，未执行设备命令、安装程序或账号操作。');
   evidence.elapsedMs=Date.now()-start;
   const size=()=>Buffer.byteLength(JSON.stringify(evidence));
-  while(size()>OUTPUT_LIMIT && evidence.files.length){evidence.files.pop();evidence.truncated=true;}
-  while(size()>OUTPUT_LIMIT && evidence.interfaces.some(item=>item.mappings?.length)){evidence.interfaces.findLast(item=>item.mappings?.length).mappings.pop();evidence.truncated=true;}
-  while(size()>OUTPUT_LIMIT && evidence.interfaces.some(item=>item.channels?.length)){evidence.interfaces.findLast(item=>item.channels?.length).channels.pop();evidence.truncated=true;}
-  while(size()>OUTPUT_LIMIT && evidence.schemas.length){evidence.schemas.pop();evidence.truncated=true;}
-  while(size()>OUTPUT_LIMIT && evidence.packages.length){evidence.packages.pop();evidence.truncated=true;}
-  while(size()>OUTPUT_LIMIT && evidence.interfaces.length){evidence.interfaces.pop();evidence.truncated=true;}
-  if(size()>OUTPUT_LIMIT && evidence.vendorDetails){delete evidence.vendorDetails;evidence.truncated=true;}
+  if(Number.isFinite(outputLimit)&&size()>outputLimit){evidence.truncated=true;evidence.limitations.push('摘要超过调用方指定的 maxOutputBytes；接口记录保持完整，请由调用方选取所需内容。');}
   return evidence;
 }
 

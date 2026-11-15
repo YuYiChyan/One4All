@@ -14,7 +14,7 @@ function createKeyboardService({python,run,profileDirectory,viaCatalog}={}){
   const execute=run||(()=>new Promise((resolve,reject)=>{
     if(!python){reject(Error('缺少随包 Python 运行时'));return;}
     const child=execFile(python,['-I','-B',path.join(__dirname,'windows_keyboard.py'),'--status'],
-      {windowsHide:true,timeout:10000,maxBuffer:512*1024,encoding:'utf8',env:{...process.env,ONE4ALL_HID_SESSION_SALT:sessionSalt}},
+      {windowsHide:true,maxBuffer:512*1024,encoding:'utf8',env:{...process.env,ONE4ALL_HID_SESSION_SALT:sessionSalt}},
       (error,stdout)=>{
         if(active===child)active=null;
         if(error){reject(Error('HID 设备信息读取失败，请重新扫描'));return;}
@@ -22,6 +22,7 @@ function createKeyboardService({python,run,profileDirectory,viaCatalog}={}){
       });
     active=child;
   }));
+  function cancelPending(){const current=active,waiting=pending;current?.kill();return Promise.resolve(waiting).catch(()=>{}).then(()=>({cancelled:!!current}));}
   return Object.freeze({
     status(){
       if(closed)return Promise.reject(Error('Keyboard service is closed'));
@@ -38,7 +39,8 @@ function createKeyboardService({python,run,profileDirectory,viaCatalog}={}){
       if(!knownIds.has(deviceId))return Promise.reject(Error('请先扫描并选择设备'));
       try{return Promise.resolve(store.set(deviceId,appearance));}catch(error){return Promise.reject(error);}
     },
-    async close(){closed=true;active?.kill();if(pending)await pending.catch(()=>{});},
+    cancelPending,
+    async close(){closed=true;await cancelPending();},
   });
 }
 module.exports={createKeyboardService};

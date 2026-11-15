@@ -12,8 +12,8 @@
  class MouseSession{
   constructor(device,protocol,{timeoutMs=2000}={}){this.device=device;this.protocol=protocol;this.timeoutMs=timeoutMs;this.connection=device.productId===protocol.productIds[1]?165:255;this.owned=!device.opened;this.closed=false;this.queue=Promise.resolve();this.operations=Promise.resolve();}
   enqueue(fn){const job=this.operations.then(fn,fn);this.operations=job.catch(()=>{});return job;}
-  command(payload){const run=async()=>{if(this.closed)throw Error('设备页面已关闭');let timer;const task=(async()=>{if(!this.device.opened)await this.device.open();if(this.closed){if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw Error('设备页面已关闭');}await this.device.sendReport(6,payload);for(let i=0;i<5;i++){await wait(this.connection===165?10:1);if(this.closed)throw Error('设备页面已关闭');const b=await this.device.receiveFeatureReport(8);if(!b.byteLength)throw Error('设备返回空数据');const ack=b.getUint8(0);if(ack===1)return b;if(ack!==2)throw Error('雷柏设备拒绝命令（'+ack+'）');await wait(100);}throw Error('雷柏设备持续忙碌');})();
-   try{return await Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('雷柏设备响应超时')),this.timeoutMs);})]);}catch(error){this.closed=true;if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw error;}finally{clearTimeout(timer);}
+  command(payload){const run=async()=>{if(this.closed)throw Error('设备页面已关闭');let timer;const stopped=new Promise((_,reject)=>{this.cancel=reject;});const task=(async()=>{if(!this.device.opened)await this.device.open();if(this.closed){if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw Error('设备页面已关闭');}timer=setTimeout(()=>this.cancel?.(Error('雷柏设备响应超时')),this.timeoutMs);await this.device.sendReport(6,payload);for(let i=0;i<5;i++){await wait(this.connection===165?10:1);if(this.closed)throw Error('设备页面已关闭');const b=await this.device.receiveFeatureReport(8);if(!b.byteLength)throw Error('设备返回空数据');const ack=b.getUint8(0);if(ack===1)return b;if(ack!==2)throw Error('雷柏设备拒绝命令（'+ack+'）');await wait(100);}throw Error('雷柏设备持续忙碌');})();
+   try{return await Promise.race([task,stopped]);}catch(error){this.closed=true;if(this.owned&&this.device.opened)await this.device.close().catch(()=>{});throw error;}finally{this.cancel=null;clearTimeout(timer);}
   };const job=this.queue.then(run,run);this.queue=job.catch(()=>{});return job;}
   async read(addr,length){const response=await this.command(readFrame(this.connection,addr,length));if(response.byteLength<length+4)throw Error('雷柏设备返回的设置不完整');return new Uint8Array(response.buffer,response.byteOffset+4,length).slice();}
   async write(addr,data){await this.command(writeFrame(this.connection,addr,data));}
@@ -35,7 +35,7 @@
    }else throw Error('尚未接入此雷柏操作');
    const after=await this.readState();delete after._raw;if(!check(after))throw Error('设备重新读取的设置与请求不同');return after;
   });}
-  async close(){this.closed=true;await this.operations;await this.queue;if(this.owned&&this.device.opened)await this.device.close();}
+  async close(){this.closed=true;this.cancel?.(Error('设备页面已关闭'));if(this.owned&&this.device.opened)await this.device.close();}
  }
  function supportedInterface(device,protocol){if(device.vendorId!==protocol.vendorId||!protocol.productIds.includes(device.productId))return false;const filters=protocol.filters.filter(f=>f.productId===device.productId);const visit=rows=>(rows||[]).some(c=>filters.some(f=>f.usagePage===c.usagePage&&f.usage===c.usage)&&(c.outputReports||[]).some(r=>r.reportId===6)&&(c.featureReports||[]).some(r=>r.reportId===8)||visit(c.children));return visit(device.collections);}
  function createApi({model,protocol=model.support,hid=globalThis.navigator?.hid,prepare=async()=>{},timeoutMs}={}){

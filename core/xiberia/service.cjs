@@ -23,7 +23,7 @@ function createNative(base,{spawnProcess=spawn,runtimeRoot=path.join(base,'xiber
   function close(){
     clearTimeout(idle);idle=null;
     const current=child;child=null;reader?.close();reader=null;
-    if(pending){clearTimeout(pending.timer);pending.reject(Error('耳机音效进程已退出'));pending=null;}
+    if(pending){pending.reject(Error('耳机音效进程已退出'));pending=null;}
     current?.kill();
   }
   function start(){
@@ -35,7 +35,7 @@ function createNative(base,{spawnProcess=spawn,runtimeRoot=path.join(base,'xiber
     reader.on('line',line=>{
       if(current!==child||!pending)return;
       let result;try{result=JSON.parse(line);}catch{return;}
-      const request=pending;pending=null;clearTimeout(request.timer);
+      const request=pending;pending=null;
       if(result.ok)request.resolve(result.state);else request.reject(Error(result.error||'耳机音效读取失败'));
     });
     child.on('error',()=>{if(current===child)close();});
@@ -48,8 +48,7 @@ function createNative(base,{spawnProcess=spawn,runtimeRoot=path.join(base,'xiber
     return new Promise((resolve,reject)=>{
       try{
         start();
-        const timer=setTimeout(()=>close(),12000);
-        pending={resolve,reject,timer};
+        pending={resolve,reject};
         child.stdin.write(JSON.stringify({command,value,endpoint})+'\n');
       }catch(error){reject(error);close();}
     }).finally(()=>{idle=setTimeout(close,60000);idle.unref?.();});
@@ -57,22 +56,25 @@ function createNative(base,{spawnProcess=spawn,runtimeRoot=path.join(base,'xiber
   return {request,close};
 }
 function createCore(base,id='k03s'){
-  return (command,value)=>new Promise((resolve,reject)=>{
+  const children=new Set();
+  const request=(command,value)=>new Promise((resolve,reject)=>{
     const config=JSON.parse(fs.readFileSync(path.join(base,'lab-config.json'),'utf8'));
     const root=path.join(base,'xiberia-runtime');
     const bootstrap='import sys,runpy;sys.path.insert(0,sys.argv[1]);runpy.run_path(sys.argv[2],run_name="__main__")';
-    const child=execFile(config.python,['-I','-B','-c',bootstrap,path.join(base,'xiberia-audio-deps'),path.join(root,'audio_backend.py')],{cwd:root,env:{...process.env,ONE4ALL_XIBERIA_ID:id},windowsHide:true,timeout:12000,maxBuffer:256*1024,encoding:'utf8'},(error,stdout)=>{
-      if(error){reject(Error('耳机读取超时，请重新连接'));return;}
+    const child=execFile(config.python,['-I','-B','-c',bootstrap,path.join(base,'xiberia-audio-deps'),path.join(root,'audio_backend.py')],{cwd:root,env:{...process.env,ONE4ALL_XIBERIA_ID:id},windowsHide:true,maxBuffer:256*1024,encoding:'utf8'},(error,stdout)=>{
+      children.delete(child);if(error){reject(Error('耳机读取失败，请重新连接后重试'));return;}
       try{const reply=JSON.parse(stdout);if(!reply.ok)throw Error(reply.error);resolve(reply.state);}catch(error){reject(error);}
     });
-    child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({command,value}));
+    children.add(child);child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({command,value}));
   });
+  request.close=()=>{for(const child of children)child.kill();};
+  return request;
 }
 function scanConnected(base){return createCore(base)('inventory');}
 function createService(base,{id='k03s',runCore,native=createNative(base),now=Date.now}={}){
   if(!models.some(model=>model.id===id))throw Error('未知西伯利亚型号');
   const execute=runCore||createCore(base,id);
-  let queue=Promise.resolve(),closed=false,lastNativeErrorAt=0;
+  let queue=Promise.resolve(),closed=false;
   function enqueue(operation){
     if(closed)return Promise.reject(Error('耳机页面已关闭'));
     const result=queue.then(()=>{if(closed)throw Error('耳机页面已关闭');return operation();});queue=result.catch(()=>{});return result;
@@ -88,10 +90,10 @@ function createService(base,{id='k03s',runCore,native=createNative(base),now=Dat
     }
     let effects=null;
     if(command!=='status'&&!coreCommands.has(command)){
-      effects=await native.request(command,value,endpoint);lastNativeErrorAt=0;
-    }else if(now()-lastNativeErrorAt>10000){
-      try{effects=await native.request('status',undefined,endpoint);lastNativeErrorAt=0;}
-      catch{lastNativeErrorAt=now();}
+      effects=await native.request(command,value,endpoint);
+    }else{
+      try{effects=await native.request('status',undefined,endpoint);}
+      catch{}
     }
     // An unavailable APO never removes normal Core Audio controls or invents values.
     state.effects=effects;state.capabilities.effects=!!effects?.ready;
@@ -100,7 +102,7 @@ function createService(base,{id='k03s',runCore,native=createNative(base),now=Dat
   return Object.freeze({
     status:()=>enqueue(()=>read()),
     invoke:(command,value)=>{validate(command,value);return enqueue(()=>read(command,value));},
-    close:()=>{closed=true;native.close();return queue;},
+    close:()=>{closed=true;native.close();execute.close?.();return queue;},
   });
 }
 module.exports={commands,validate,createNative,createService,scanConnected};

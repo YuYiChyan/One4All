@@ -4,7 +4,7 @@
  const kindNames={mouse:'鼠标',keyboard:'键盘',headset:'耳机',charger:'充电器'},selectionKey='one4all-catalog-selection';
  const imageOf=variant=>variant?.imageUrl||variant?.artUrl||variant?.image||null;
  window.One4AllCatalog={render(container,{api,notify=()=>{},onOpen=()=>{}}){
-  let alive=true,catalog={devices:[]},serverRecords=[],limit=24,cardMounts=[],settingsDialog=null,selections={};
+  let alive=true,catalog={devices:[]},serverRecords=[],limit=24,cardMounts=[],settingsDialog=null,selections={},refreshing=null,refreshingStatus=false;
   try{const saved=JSON.parse(localStorage.getItem(selectionKey)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))selections=saved;}catch{}
   const mount=el('section','model-catalog'),filters=el('div','catalog-filters'),brand=el('select'),kind=el('select'),search=el('input');
   brand.setAttribute('aria-label','筛选品牌');kind.setAttribute('aria-label','筛选设备类型');
@@ -79,13 +79,17 @@
    }
    more.hidden=rows.length<=limit;return Promise.allSettled(ready);
   }
-  refresh.onclick=async()=>{refresh.disabled=true;refresh.textContent='正在更新…';try{await Promise.all((brand.value?[brand.value]:Object.keys(catalog.brands||{mchose:1,razer:1,logitech:1})).map(id=>api.refreshResources(id)));const next=await api.getDeviceCatalog();if(alive){catalog=next;updateBrands();await draw();notify('型号与商品图已更新');}}catch(error){if(alive)notify(error.message||String(error));}finally{if(alive){refresh.disabled=false;refresh.textContent='更新型号';}}};
-  refreshStatus.onclick=async()=>{refreshStatus.disabled=true;refreshStatus.textContent='正在刷新…';try{const result=await api.refreshVerificationServer();if(!alive)return;if(!result.configured){notify('尚未设置验证服务器，可先使用本机确认。');return;}serverRecords=result.records||[];await draw();notify('验证状态已刷新');}catch(error){if(alive)notify(error.message||String(error));}finally{if(alive){refreshStatus.disabled=false;refreshStatus.textContent='刷新验证状态';}}};
+  refresh.onclick=async()=>{
+   if(refreshing){const current=refreshing;current.cancelled=true;refresh.disabled=true;try{await Promise.all(current.brands.map(id=>api.cancelResourceRefresh(id)));}catch(error){if(alive)notify(error.message||String(error));}finally{if(alive)refresh.disabled=false;}return;}
+   const current={brands:brand.value?[brand.value]:Object.keys(catalog.brands||{mchose:1,razer:1,logitech:1}),cancelled:false};refreshing=current;refresh.textContent='取消更新';
+   try{const results=await Promise.allSettled(current.brands.map(id=>api.refreshResources(id))),next=await api.getDeviceCatalog();if(alive){catalog=next;updateBrands();await draw();const failures=results.flatMap((result,i)=>result.status==='rejected'?[current.brands[i]+': '+(result.reason?.message||String(result.reason))]:[]);notify(current.cancelled?'已停止更新，已取得的型号与商品图仍保留':failures.length?'已更新可用资源；'+failures.join('；'):'型号与商品图已更新');}}catch(error){if(alive)notify(error.message||String(error));}finally{if(refreshing===current)refreshing=null;if(alive){refresh.disabled=false;refresh.textContent='更新型号';}}
+  };
+  refreshStatus.onclick=async()=>{if(refreshingStatus){try{await api.cancelVerificationServerRequests();}catch(error){if(alive)notify(error.message||String(error));}return;}refreshingStatus=true;refreshStatus.textContent='取消刷新';try{const result=await api.refreshVerificationServer();if(!alive)return;if(!result.configured){notify('尚未设置验证服务器，可先使用本机确认。');return;}serverRecords=result.records||[];await draw();notify('验证状态已刷新');}catch(error){if(alive)notify(error.message||String(error));}finally{refreshingStatus=false;if(alive)refreshStatus.textContent='刷新验证状态';}};
   serverSettings.onclick=()=>{if(!window.One4AllServerSettings){notify('服务器设置暂不可用');return;}settingsDialog?.dispose();settingsDialog=window.One4AllServerSettings.open({api,notify,onChange:async()=>{serverRecords=await api.listServerVerifications();if(alive)await draw();}});};
   more.onclick=()=>{limit+=24;draw();};for(const input of [brand,kind,search])input.oninput=()=>{limit=24;draw();};
   const ready=(async()=>{
    const results=await Promise.allSettled([api.getDeviceCatalog(),api.listServerVerifications?.()||Promise.resolve([])]);if(!alive)return;
-   if(results[0].status==='rejected')throw results[0].reason;catalog=results[0].value;serverRecords=results[1].status==='fulfilled'&&Array.isArray(results[1].value)?results[1].value:[];updateBrands();await draw();
+   if(results[0].status==='rejected')throw results[0].reason;catalog=results[0].value;serverRecords=results[1].status==='fulfilled'&&Array.isArray(results[1].value)?results[1].value:[];updateBrands();await draw();if(catalog.warnings?.length)notify('部分品牌目录暂时无法读取：'+catalog.warnings.map(item=>catalog.brands?.[item.brand]||item.brand).join('、')+'。其他设备仍可使用，可点击更新型号重试。');
   })();
   return {ready,dispose(){if(!alive)return;alive=false;disposeCards();settingsDialog?.dispose();mount.remove();}};
  }};

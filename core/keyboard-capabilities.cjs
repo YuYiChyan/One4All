@@ -25,7 +25,7 @@ const catalogue = Object.freeze({
   saveProfile: { label: '保存到键盘', group: '配置', type: 'action', actionLabel: '保存当前配置' },
 });
 
-const commandPattern = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,127}$/;
+const hasCommand = value => typeof value==='string' && value.trim().length>0;
 const scalar = value => typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
 function validRange(range) {
   return range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.max >= range.min && Number.isFinite(range.step) && range.step > 0;
@@ -39,18 +39,16 @@ function normalizeOptions(options) {
 }
 
 function normalizeCapabilities(report) {
-  // A matching vendor/product ID is discovery evidence only. A provider must also
-  // confirm an interface and report implemented commands for this device session.
-  if (!report || report.connected !== true || report.interfaceConfirmed !== true || typeof report.provider !== 'string' || !report.provider || typeof report.version !== 'string' || !report.version || !Array.isArray(report.evidence) || !report.evidence.some(item => typeof item === 'string' && item.length) || !Array.isArray(report.capabilities)) return [];
+  // Connection and commands determine availability; descriptive metadata does not.
+  if (!report || report.connected !== true || report.interfaceConfirmed === false || typeof report.provider !== 'string' || !report.provider || !Array.isArray(report.capabilities)) return [];
   const seen = new Set();
   return report.capabilities.flatMap(cap => {
     if (!cap || seen.has(cap.id) || !Object.hasOwn(catalogue, cap.id) || cap.supported !== true) return [];
     const spec = catalogue[cap.id];
-    const readable = cap.readable === true && typeof cap.readCommand === 'string' && commandPattern.test(cap.readCommand);
-    const writable = cap.writable === true && typeof cap.writeCommand === 'string' && commandPattern.test(cap.writeCommand);
-    // Settings require readback. Action results are acknowledged by their provider.
-    if ((!readable && !writable) || (spec.type !== 'action' && !readable)) return [];
-    const normalized = { ...spec, id: cap.id, supported: true, readable, writable, readCommand: readable ? cap.readCommand : null, writeCommand: writable ? cap.writeCommand : null, provider: report.provider, version: report.version, evidence: report.evidence.filter(item => typeof item === 'string') };
+    const readable = cap.readable === true && hasCommand(cap.readCommand);
+    const writable = cap.writable === true && hasCommand(cap.writeCommand);
+    if (!readable && !writable) return [];
+    const normalized = { ...spec, id: cap.id, supported: true, readable, writable, readCommand: readable ? cap.readCommand : null, writeCommand: writable ? cap.writeCommand : null, provider: report.provider, version: typeof report.version==='string'?report.version:'', evidence: Array.isArray(report.evidence)?report.evidence.filter(item => typeof item === 'string'):[] };
     if (spec.type === 'number') {
       if (!validRange(cap.range)) return [];
       normalized.range = { min: cap.range.min, max: cap.range.max, step: cap.range.step };
@@ -73,8 +71,10 @@ function normalizeCapabilities(report) {
       if (normalized.fields.some(field => field.type === 'number' && !field.range)) return [];
     }
     if (spec.type === 'macro') {
-      if (!Number.isInteger(cap.maxEvents) || cap.maxEvents < 1 || cap.maxEvents > 10000 || !Array.isArray(cap.keys)) return [];
-      normalized.maxEvents = cap.maxEvents;
+      if (!Array.isArray(cap.keys)) return [];
+      if(cap.maxEvents!==undefined){if(!Number.isSafeInteger(cap.maxEvents)||cap.maxEvents<1)return [];normalized.maxEvents=cap.maxEvents;}
+      if(Number.isSafeInteger(cap.maxNameLength)&&cap.maxNameLength>0)normalized.maxNameLength=cap.maxNameLength;
+      if(Number.isSafeInteger(cap.maxDelayMs)&&cap.maxDelayMs>=0)normalized.maxDelayMs=cap.maxDelayMs;
       normalized.keys = normalizeOptions(cap.keys);
       if (!normalized.keys.length) return [];
     }
@@ -107,9 +107,9 @@ function assertValue(cap, value) {
       else if (field.type === 'color' && (typeof part !== 'string' || !/^#[a-f0-9]{6}$/i.test(part))) throw new Error('颜色格式错误');
     }
   } else if (cap.type === 'macro') {
-    if (!value || typeof value.name !== 'string' || !value.name.trim() || value.name.length > 80 || !Array.isArray(value.events) || value.events.length < 1 || value.events.length > cap.maxEvents) throw new Error('宏名称或事件数量不符合设备要求');
+    if (!value || typeof value.name !== 'string' || !value.name.trim() || (cap.maxNameLength!==undefined&&value.name.length>cap.maxNameLength) || !Array.isArray(value.events) || value.events.length < 1 || (cap.maxEvents!==undefined&&value.events.length>cap.maxEvents)) throw new Error('宏名称或事件数量不符合设备要求');
     for (const event of value.events) {
-      if (!['down','up'].includes(event.type) || !cap.keys.some(item => item.value === event.code) || !Number.isInteger(event.delayMs) || event.delayMs < 0 || event.delayMs > 60000) throw new Error('宏事件不符合设备要求');
+      if (!['down','up'].includes(event.type) || !cap.keys.some(item => item.value === event.code) || !Number.isSafeInteger(event.delayMs) || event.delayMs < 0 || (cap.maxDelayMs!==undefined&&event.delayMs>cap.maxDelayMs)) throw new Error('宏事件不符合设备要求');
     }
   }
   return value;
@@ -135,7 +135,6 @@ function createController({ report, execute }) {
         const result=await execute(cap.writeCommand,{capability:id,value});
         if(result?.ok===false)throw new Error(result.error||'设备拒绝了设置');
         if(cap.readable)return confirmed(await execute(cap.readCommand,{capability:id}));
-        if(result?.ok!==true)throw new Error('设备尚未确认操作完成');
         return result;
       });
     },

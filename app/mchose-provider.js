@@ -43,16 +43,16 @@
     command(command,data=[]){
       const perform=async()=>{
         if(this.closed)throw Error('设备连接已关闭');if(!this.device.opened)await this.device.open();
-        if(this.closed)throw Error('设备连接已关闭');
+        if(this.closed){if(this.owned&&this.device.opened)await this.device.close();throw Error('设备连接已关闭');}
         const frame=encodeRequest(command,data);let listener,timer;
         try{return await new Promise((resolve,reject)=>{
-          timer=setTimeout(()=>reject(Error('迈从设备没有响应，请检查连接')),this.timeoutMs);
+          this.cancel=reject;timer=setTimeout(()=>reject(Error('迈从设备没有响应，请检查连接')),this.timeoutMs);
           // The official waitCommand binds to this HIDDevice and matches the
           // command bytes; it does not assume the input report ID equals 0x4D.
           listener=event=>{const response=bytes(event.data);if(response.length<7||(response[3]|response[4]<<8)!==command)return;resolve(response.slice(7));};
           this.device.addEventListener('inputreport',listener);
-          Promise.resolve().then(()=>this.device.sendReport(frame.reportId,frame.data)).catch(reject);
-        });}finally{clearTimeout(timer);if(listener)this.device.removeEventListener('inputreport',listener);}
+          Promise.resolve().then(()=>{if(this.closed)throw Error('设备连接已关闭');return this.device.sendReport(frame.reportId,frame.data);}).catch(reject);
+        });}finally{this.cancel=null;clearTimeout(timer);if(listener)this.device.removeEventListener('inputreport',listener);}
       };
       const promise=this.queue.then(perform,perform);this.queue=promise.catch(()=>{});return promise;
     }
@@ -120,7 +120,7 @@
       if(!check(after))throw Error('设备已应答，但重新读取的设置不一致，请重新检测');
       return after;
     });}
-    async close(){this.closed=true;await this.operations;await this.queue;if(this.owned&&this.device.opened)await this.device.close();}
+    async close(){this.closed=true;this.cancel?.(Error('设备连接已关闭'));if(this.owned&&this.device.opened)await this.device.close();}
   }
   function hasInterface(device,protocol){
     if(device.vendorId!==protocol.vendorId||!protocol.productIds.includes(device.productId))return false;

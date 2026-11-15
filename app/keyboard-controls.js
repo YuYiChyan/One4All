@@ -9,7 +9,7 @@
   function render(container, options) {
     const document = container.ownerDocument;
     const {device = {}, execute, onError = ()=>{}} = options;
-    const capabilities = (options.capabilities || []).filter(cap => known.has(cap.id) && cap.supported === true && cap.provider && cap.version && Array.isArray(cap.evidence) && cap.evidence.length && ((cap.readable && cap.readCommand) || (cap.type === 'action' && cap.writable && cap.writeCommand)));
+    const capabilities = (options.capabilities || []).filter(cap => known.has(cap.id) && cap.supported === true && cap.provider && ((cap.readable && cap.readCommand) || (cap.writable && cap.writeCommand)));
     const values = {...options.values};
     const cleanups = [];
     let disposed = false, pageDisposers = [], active = options.initialGroup || capabilities[0]?.group || '按键测试';
@@ -60,28 +60,28 @@
       } else if(cap.type==='fields') {
         for(const field of cap.fields)fields.push([field.id,input(field,null,cap.keys)]);
       } else if(cap.type==='macro') {
-        const name=input({type:'text',label:'宏名称'},'');name.control.maxLength=80;
+        const name=input({type:'text',label:'宏名称'},'');if(Number.isInteger(cap.maxNameLength)&&cap.maxNameLength>0)name.control.maxLength=cap.maxNameLength;
         const events=[];let recording=false,lastTime=0;
         const record=node('button','o4-keyboard-secondary','录制按键');record.type='button';
         const eventCount=node('span','o4-keyboard-muted','0 条事件');
         const timeline=node('ol','o4-keyboard-macro-events');
         const recordArea=node('div','o4-keyboard-record-area','点击录制后，在此区域按下按键；再次点击停止。');recordArea.tabIndex=0;
-        const refresh=()=>{eventCount.textContent=events.length+' / '+cap.maxEvents+' 条事件';timeline.replaceChildren(...events.slice(-12).map(event=>node('li','',(event.type==='down'?'按下 ':'松开 ')+event.code+' · '+event.delayMs+' ms')));};
+        const refresh=()=>{eventCount.textContent=events.length+(Number.isFinite(cap.maxEvents)?' / '+cap.maxEvents:'')+' 条事件';timeline.replaceChildren(...events.slice(-12).map(event=>node('li','',(event.type==='down'?'按下 ':'松开 ')+event.code+' · '+event.delayMs+' ms')));};
         const stop=()=>{recording=false;record.textContent='重新录制';};
         record.addEventListener('click',()=>{if(recording){stop();return;}events.length=0;lastTime=performance.now();recording=true;record.textContent='停止录制';recordArea.focus();refresh();});
         const capture=event=>{
           if(!recording||event.repeat)return;
           event.preventDefault();event.stopPropagation();
           if(!cap.keys.some(key=>key.value===event.code))return;
-          if(events.length>=cap.maxEvents){stop();return;}
-          const now=performance.now();events.push({type:event.type==='keydown'?'down':'up',code:event.code,delayMs:Math.min(60000,Math.round(now-lastTime))});lastTime=now;refresh();
+          if(Number.isFinite(cap.maxEvents)&&events.length>=cap.maxEvents){stop();return;}
+          const now=performance.now(),delay=Math.round(now-lastTime);events.push({type:event.type==='keydown'?'down':'up',code:event.code,delayMs:Number.isFinite(cap.maxDelayMs)?Math.min(cap.maxDelayMs,delay):delay});lastTime=now;refresh();
         };
         recordArea.addEventListener('keydown',capture);recordArea.addEventListener('keyup',capture);
         recordArea.addEventListener('blur',stop);
         box.append(name.outer,recordArea,record,eventCount,timeline);
         return {box,set:value=>{stop();name.set(value?.name||'');events.splice(0,events.length,...(Array.isArray(value?.events)?value.events:[]));refresh();},get:()=>{stop();const nameValue=name.get().trim();if(!nameValue||!events.length)throw new Error('请填写宏名称并录制按键');return {name:nameValue,events:events.map(event=>({...event}))};}};
       } else if(cap.type!=='action') fields.push(['value',input(cap,null,cap.options)]);
-      for(const [,field] of fields)box.append(field.outer);
+      for(const [id,field] of fields){if((cap.type==='keymap'&&['layer','key'].includes(id))||(cap.type==='fields'&&id==='key'&&cap.fields.some(f=>f.id===id&&f.type==='key'))){field.control.dataset.selection='true';if(field.control.selectedIndex<0&&field.control.options.length)field.control.selectedIndex=0;}box.append(field.outer);}
       return {box,set:value=>{for(const [key,field] of fields)field.set(fields.length===1&&key==='value'?value:value?.[key]);},get:()=>fields.length===1&&fields[0][0]==='value'?fields[0][1].get():Object.fromEntries(fields.map(([key,field])=>[key,field.get()])),onSelection:callback=>{
         const selectionIds=cap.type==='keymap'?['layer','key']:cap.type==='fields'?cap.fields.filter(field=>field.type==='key'&&field.id==='key').map(field=>field.id):[];
         for(const [key,field] of fields)if(selectionIds.includes(key))field.control.addEventListener('change',()=>{const selection=Object.fromEntries(fields.filter(([id])=>selectionIds.includes(id)).map(([id,item])=>[id,item.get()]));callback(selection);});
@@ -89,7 +89,7 @@
     }
 
     function setting(cap) {
-      let alive=true,busy=false,knownValue=own(values,cap.id);
+      let alive=true,busy=false,knownValue=own(values,cap.id)||!cap.readable;
       const section=node('section','o4-keyboard-setting');section.dataset.capability=cap.id;
       section.append(node('h3','',cap.label));
       if(cap.description)section.append(node('p','o4-keyboard-muted',cap.description));
@@ -100,7 +100,7 @@
       if(cap.writable&&typeof execute==='function')footer.append(save);
       if(cap.readable&&typeof execute==='function')footer.append(refresh);
       footer.append(state);section.append(footer);
-      const enable=()=>{for(const control of editor.box.querySelectorAll('input,select,button,textarea'))control.disabled=busy||!cap.writable||typeof execute!=='function'||(!knownValue&&cap.type!=='macro');save.disabled=busy||(!knownValue&&cap.type!=='action'&&cap.type!=='macro');refresh.disabled=busy;};
+      const enable=()=>{for(const control of editor.box.querySelectorAll('input,select,button,textarea')){const selection=control.dataset.selection==='true';control.disabled=busy||(!cap.writable&&!selection)||typeof execute!=='function'||(!knownValue&&cap.type!=='macro'&&!selection);}save.disabled=busy||(!knownValue&&cap.type!=='action'&&cap.type!=='macro');refresh.disabled=busy;};
       const fail=error=>{if(!alive||disposed)return;state.textContent=error.message||String(error);state.classList.add('is-error');try{onError(error,cap);}catch{};};
       const read=async selection=>{
         if(busy||typeof execute!=='function')return;busy=true;enable();state.textContent='正在读取…';state.classList.remove('is-error');
@@ -119,12 +119,12 @@
             const confirmed=valueOf(await execute(cap.readCommand,{capability:cap.id,...(selection?{selection}:{})}));
             if(confirmed===undefined)throw new Error('设置已发送，但未读回当前值');
             if(!alive||disposed)return;values[cap.id]=confirmed;knownValue=true;editor.set(confirmed);state.textContent='已读取设备当前设置';
-          } else {if(acknowledgement?.ok!==true)throw new Error('设备尚未确认操作完成');if(alive&&!disposed)state.textContent='操作已完成';}
-        } catch(error){knownValue=false;fail(error);}finally{busy=false;if(alive&&!disposed)enable();}
+          } else {if(alive&&!disposed)state.textContent='操作已完成';}
+        } catch(error){fail(error);}finally{busy=false;if(alive&&!disposed)enable();}
       });
       refresh.addEventListener('click',()=>read());
-      editor.onSelection?.(selection=>read(selection));
-      if(knownValue)editor.set(values[cap.id]);
+      if(cap.readable)editor.onSelection?.(selection=>read(selection));
+      if(own(values,cap.id))editor.set(values[cap.id]);
       if(!cap.writable)state.textContent='只读';
       if(cap.readable&&!knownValue&&typeof execute==='function')void read();
       else enable();

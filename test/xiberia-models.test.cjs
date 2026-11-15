@@ -18,6 +18,11 @@ test('disconnected or ambiguous endpoints never reach native controls and absent
  const unplugged=await service.status('k03s');assert.equal(unplugged.connected,false);assert.equal(nativeCalls,0);
  connected=true;const state=await service.status('k03s');assert.equal(state.values.outputVolume,30);assert.equal(state.capabilities.output,true);assert.equal(state.capabilities.effects,false);assert.equal(nativeCalls,1);
 });
+test('manual status retry immediately recovers an audio component that has just become available',async t=>{
+ let available=false,calls=0;const service=fixture(t,{runCore:async()=>({connected:true,values:{outputVolume:30},capabilities:{output:true},_renderEndpoint:'target'}),nativeFactory:()=>({request:async()=>{calls++;if(!available)throw Error('Starting');return {ready:true};},close(){}})});
+ assert.equal((await service.status('k03s')).capabilities.effects,false);available=true;
+ assert.equal((await service.status('k03s')).capabilities.effects,true);assert.equal(calls,2);
+});
 test('only an explicit official app command launches that branch; invalid writes and unknown models fail',async t=>{
  const native=[];let core=0;const service=fixture(t,{runCore:async()=>{core++;return {connected:false,capabilities:{}};},nativeFactory:()=>({request:async command=>{native.push(command);return {launched:true};},close(){}})});
  await assert.rejects(service.status('xiberia-s21-max'),/支持列表/);

@@ -1,10 +1,11 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {fetchResource}=require('../core/resource-refresh-network.cjs');
 const protocols=require('../catalog/melgeek-protocols.json');
 const {RESOURCE_FILES}=require('../core/melgeek-runtime.cjs');
 const ORIGIN='https://hive.melgeek.com/';
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
-async function fetchBytes(url){const response=await fetch(url,{signal:AbortSignal.timeout(25000)});if(!response.ok)throw Error('MelGeek 资源下载失败：'+response.status);return Buffer.from(await response.arrayBuffer());}
+async function fetchBytes(url){return (await fetchResource(url)).bytes;}
 function write(file,bytes){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file+'.tmp',bytes);fs.renameSync(file+'.tmp',file);}
 async function extract({outputRoot=path.join(process.env.LOCALAPPDATA||process.cwd(),'One4All-Desktop/vendor-resources/melgeek')}={}){
  const runtimeRoot=path.join(outputRoot,'runtime');

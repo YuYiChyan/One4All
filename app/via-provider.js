@@ -43,7 +43,7 @@
     if(!report)throw new Error('VIA 接口没有标准的 32 字节输出报告');
     const inputIds=new Set((collection.inputReports||[]).filter(item=>reportBytes(item)===32).map(item=>item.reportId));
     if(!inputIds.size)throw new Error('VIA 接口没有标准的 32 字节输入报告');
-    let queue=Promise.resolve(),pending=null,closed=false;
+    let queue=Promise.resolve(),pending=null,closed=false;const closedListeners=new Set();
     const failPending=error=>{if(pending){clearTimeout(pending.timer);pending.reject(error);pending=null;}};
     const onInput=event=>{
       if(!pending||!inputIds.has(event.reportId))return;
@@ -54,30 +54,34 @@
       const complete=pending;pending=null;clearTimeout(complete.timer);complete.resolve(Uint8Array.from(bytes));
     };
     device.addEventListener('inputreport',onInput);
-    async function close() {if(closed)return;closed=true;device.removeEventListener('inputreport',onInput);failPending(new Error('VIA 连接已关闭'));if(device.opened)await device.close();}
+    async function close(reason=new Error('VIA 连接已关闭')) {if(closed)return;closed=true;device.removeEventListener('inputreport',onInput);failPending(reason);for(const listener of closedListeners)try{listener(reason);}catch{}closedListeners.clear();if(device.opened)await device.close();}
     const request=(command,data=[],echo=[])=>{
       const operation=queue.catch(()=>{}).then(async()=>{
         if(closed||!device.opened)throw new Error('键盘已断开，请重新连接');
         const packet=new Uint8Array(32);packet[0]=command;packet.set(data,1);
         return new Promise((resolve,reject)=>{
-          const timer=setTimeout(()=>{failPending(new Error('键盘没有响应，请重新连接后再试'));void close().catch(()=>{});},timeout);
+          const timer=setTimeout(()=>{void close(new Error('键盘没有响应，请重新连接后再试')).catch(()=>{});},timeout);
           pending={command,echo,resolve,reject,timer};
           Promise.resolve(device.sendReport(report.reportId,packet)).catch(error=>{failPending(error);void close().catch(()=>{});});
         });
       });queue=operation;return operation;
     };
-    return {request,close,isClosed:()=>closed};
+    return {request,close,isClosed:()=>closed,onDisconnect:listener=>{closedListeners.add(listener);return ()=>closedListeners.delete(listener);}};
   }
-  async function connect({definition,target,hid=root.navigator?.hid}={}) {
+  async function connect({definition,target,hid=root.navigator?.hid,signal}={}) {
     if(!hid)throw new Error('当前环境没有可用的 WebHID');
+    const cancelled=()=>new DOMException('连接已取消','AbortError');
+    const check=()=>{if(signal?.aborted)throw cancelled();};
+    const wait=(promise,onLate=()=>{})=>new Promise((resolve,reject)=>{let settled=false;const stop=()=>{if(settled)return;settled=true;signal?.removeEventListener('abort',stop);reject(cancelled());};signal?.addEventListener('abort',stop,{once:true});Promise.resolve(promise).then(value=>{if(settled){void Promise.resolve().then(()=>onLate(value)).catch(()=>{});return;}settled=true;signal?.removeEventListener('abort',stop);resolve(value);},error=>{if(settled)return;settled=true;signal?.removeEventListener('abort',stop);reject(error);});if(signal?.aborted)stop();});
+    check();
     const parsed=parseDefinition(definition,target);
-    const devices=await hid.requestDevice({filters:[{vendorId:parsed.vendorId,productId:parsed.productId,usagePage:0xff60,usage:0x61}]});
+    const devices=await wait(hid.requestDevice({filters:[{vendorId:parsed.vendorId,productId:parsed.productId,usagePage:0xff60,usage:0x61}]}));check();
     if(devices.length!==1)throw new Error(devices.length?'请选择一台键盘':'未选择 VIA 键盘');
     const device=devices[0];
     if(device.vendorId!==parsed.vendorId||device.productId!==parsed.productId||!viaCollection(device))throw new Error('选择的接口与 VIA 定义不匹配');
-    if(!device.opened)await device.open();
     let transport;
-    try {transport=createTransport(device);}catch(error){await device.close();throw error;}
+    try {if(!device.opened)await wait(device.open(),()=>device.opened?device.close():undefined);check();transport=createTransport(device);}catch(error){if(device.opened)await device.close().catch(()=>{});throw error;}
+    const cancel=()=>void transport.close(cancelled()).catch(()=>{});signal?.addEventListener('abort',cancel,{once:true});
     try {
       const versionResponse=await transport.request(COMMAND.version);
       const protocolVersion=(versionResponse[1]<<8)|versionResponse[2];
@@ -123,10 +127,12 @@
           throw new Error('VIA 未开放此命令');
         });operations=operation;return operation;
       };
-      const disconnect=event=>{if(event.device===device)void transport.close().catch(()=>{});};
+      check();const info={name:parsed.name,connected:true,interface:'VIA · USB',vendorId:parsed.vendorId,productId:parsed.productId};
+      const disconnect=event=>{if(event.device===device)void transport.close(new Error('键盘已断开，可以重新连接')).catch(()=>{});};
       hid.addEventListener('disconnect',disconnect);
-      return {device:{name:parsed.name,connected:true,interface:'VIA · USB',vendorId:parsed.vendorId,productId:parsed.productId},capabilities,values:{keymap:first},execute,protocolVersion,layerCount,close:async()=>{hid.removeEventListener('disconnect',disconnect);await transport.close();}};
-    } catch(error){await transport.close().catch(()=>{});throw error;}
+      transport.onDisconnect(()=>{info.connected=false;hid.removeEventListener('disconnect',disconnect);signal?.removeEventListener('abort',cancel);});
+      return {device:info,capabilities,values:{keymap:first},execute,protocolVersion,layerCount,onDisconnect:transport.onDisconnect,close:()=>transport.close()};
+    } catch(error){signal?.removeEventListener('abort',cancel);await transport.close().catch(()=>{});throw error;}
   }
   root.One4AllVia=Object.freeze({connect,parseDefinition,basicActions,createTransport});
 })(typeof window==='object'?window:globalThis);

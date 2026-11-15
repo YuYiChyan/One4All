@@ -42,7 +42,7 @@
   return {capabilities:out,values};
  }
  function createSession({runtimeBridge,model,rawDevice,deviceInfo,onEvent,timeoutMs=3500}){
-  let closed=false,closedError=null,closing=null,queue=Promise.resolve(),pending=null,snapshot={deviceInfo},selectedKeys={};
+  let closed=false,closedError=null,closing=null,queue=Promise.resolve(),pending=null,snapshot={deviceInfo},selectedKeys={};const disconnectListeners=new Set();
   const path=deviceInfo.path;
   const receive=event=>{
    if(closed||!pending)return;let data;try{data=typeof event.data==='string'?JSON.parse(event.data):event.data;}catch{return;}
@@ -91,18 +91,19 @@
     runtimeBridge.runtime.emit('dev_info',{func_name:'set_'+section+'_info',args:['--path',path,...args]});
     const after=await request(section,data=>same(valueFor(id,data),value));assign(section,after);Object.assign(session,capabilities(snapshot));return {ok:true,value:valueFor(id,after)};
    });},
-   close(reason){if(closed)return closing;closed=true;closedError=reason instanceof Error?reason:Error('MelGeek 连接已关闭');session.connected=false;session.device.connected=false;if(pending){clearTimeout(pending.timer);pending.reject(closedError);pending=null;}onEvent(null);closing=Promise.resolve().then(()=>runtimeBridge.close());return closing;}
+   onDisconnect(listener){disconnectListeners.add(listener);return ()=>disconnectListeners.delete(listener);},
+   close(reason){if(closed)return closing;closed=true;closedError=reason instanceof Error?reason:Error('MelGeek 连接已关闭');session.connected=false;session.device.connected=false;if(pending){clearTimeout(pending.timer);pending.reject(closedError);pending=null;}onEvent(null);closing=Promise.resolve().then(()=>runtimeBridge.close());for(const listener of disconnectListeners)try{listener(closedError);}catch{}disconnectListeners.clear();return closing;}
   };
   return session;
  }
  async function connect({model,prepare=async()=>{},loadRuntime,hid=root.navigator?.hid,createRuntime=root.One4AllMelgeekRuntime?.createRuntime,timeoutMs=6000,signal}={}){
   if(!model?.support||model.support.provider!==PROVIDER)throw Error('此型号尚未接入 MelGeek 控制模块');if(!hid||!createRuntime||!loadRuntime)throw Error('MelGeek 设备模块未完整加载');
-  const support=model.support;let bridge,bridgeClosing,rawDevice,rawClosing,session,listener=null,handshake,rejectHandshake,rejectAbort;
+  const support=model.support;let bridge,bridgeClosing,rawDevice,rawClosing,session,listener=null,handshake,rejectHandshake,rejectAbort,lostError=null;
   const cancelled=Object.assign(Error('MelGeek 连接已取消'),{name:'AbortError'});
   const aborted=new Promise((resolve,reject)=>{rejectAbort=reject;});aborted.catch(()=>{});
-  const check=()=>{if(signal?.aborted)throw cancelled;};
+  const check=()=>{if(signal?.aborted)throw cancelled;if(lostError)throw lostError;};
   const closeBridge=()=>{if(!bridge)return Promise.resolve();return bridgeClosing??=(Promise.resolve().then(()=>bridge.close()));};
-  const removeAbort=()=>signal?.removeEventListener('abort',abort);
+  const removeAbort=()=>{signal?.removeEventListener('abort',abort);hid.removeEventListener?.('disconnect',disconnected);};
   const cleanup=reason=>{
    listener=null;clearTimeout(handshake);rejectHandshake?.(reason);rejectHandshake=null;
    if(session)return session.close(reason);
@@ -111,16 +112,17 @@
    return Promise.resolve();
   };
   const abort=()=>{rejectAbort(cancelled);void cleanup(cancelled).catch(()=>{});};
+  const disconnected=event=>{if(event.device!==rawDevice)return;lostError=Error('键盘已断开，可以重新连接');rejectAbort(lostError);void cleanup(lostError).catch(()=>{});};
   // Race unabortable picker/IPC promises as well. Late results may not continue
   // into another stage; a runtime that finishes constructing late is closed.
-  const wait=async task=>{check();const pending=Promise.resolve(task());const value=await (signal?Promise.race([pending,aborted]):pending);check();return value;};
+  const wait=async task=>{check();const pending=Promise.resolve(task());const value=await Promise.race([pending,aborted]);check();return value;};
   signal?.addEventListener('abort',abort,{once:true});
   try{
    await wait(()=>prepare(model.id));
    const selected=await wait(()=>hid.requestDevice({filters:support.vendorIds.flatMap(vendorId=>support.usagePages.map(usagePage=>({vendorId,usagePage})))}));
-   const devices=selected.filter(device=>matches(device,support));if(devices.length!==1)throw Error(devices.length?'请只选择一台当前型号键盘':'没有选择当前型号的控制接口');rawDevice=devices[0];
+   const devices=selected.filter(device=>matches(device,support));if(devices.length!==1)throw Error(devices.length?'请只选择一台当前型号键盘':'没有选择当前型号的控制接口');rawDevice=devices[0];hid.addEventListener?.('disconnect',disconnected);
    const bundle=await wait(()=>loadRuntime(model.id));
-   await wait(()=>Promise.resolve(createRuntime({wasmBytes:Uint8Array.from(atob(bundle.wasmBase64),c=>c.charCodeAt(0)),devices:[rawDevice],resources:bundle.resources,onEvent:event=>listener?.(event)})).then(created=>{bridge=created;if(signal?.aborted)void cleanup(cancelled).catch(()=>{});return created;}));
+   await wait(()=>Promise.resolve(createRuntime({wasmBytes:Uint8Array.from(atob(bundle.wasmBase64),c=>c.charCodeAt(0)),devices:[rawDevice],resources:bundle.resources,onEvent:event=>listener?.(event)})).then(created=>{bridge=created;if(signal?.aborted||lostError)void cleanup(lostError||cancelled).catch(()=>{});return created;}));
    const waitInfo=new Promise((resolve,reject)=>{rejectHandshake=reject;const timer=setTimeout(()=>reject(Error('MelGeek 型号握手超时，请重新连接')),timeoutMs);handshake=timer;listener=event=>{if(event.type!=='load_opt_devices')return;let data;try{data=typeof event.data==='string'?JSON.parse(event.data):event.data;}catch{return;}const rows=(data?.usb_devs||[]).filter(item=>typeof item.path==='string'&&support.aliases.includes(item.alias)&&item.dev_type===2);if(rows.length!==1)return;clearTimeout(timer);rejectHandshake=null;resolve(rows[0]);};});
    // request only receives the exact selected interface. Global device listeners
    // and host-key monitoring are never enabled.

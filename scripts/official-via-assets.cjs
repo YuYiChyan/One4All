@@ -1,5 +1,6 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),zlib=require('node:zlib');
+const {fetchResource,safeResourcePath,isImage}=require('../core/resource-refresh-network.cjs');
 require('../app/via-provider.js');
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
 const slug=value=>String(value).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -16,7 +17,7 @@ function jsonDocuments(bytes){
   if(!/\.json$/i.test(name)||name.startsWith('__MACOSX/'))continue;
   if(bytes.readUInt32LE(local)!==0x04034b50)throw new Error('原厂定义 ZIP 文件头无效');
   const start=local+30+bytes.readUInt16LE(local+26)+bytes.readUInt16LE(local+28),compressed=bytes.subarray(start,start+size);
-  const data=method===0?compressed:method===8?zlib.inflateRawSync(compressed,{maxOutputLength:4*1024*1024}):null;
+  const data=method===0?compressed:method===8?zlib.inflateRawSync(compressed):null;
   if(!data)throw new Error('原厂定义 ZIP 压缩格式不支持');
   out.push({file:name,definition:JSON.parse(data.toString('utf8').replace(/^\uFEFF/,''))});
  }
@@ -43,12 +44,12 @@ function rowFor(brand,definition,{label,sourceUrl,sourceFile,productUrl,variants
 function createContext(brand,{outputRoot,offline=false,updateRegistry=false}={}){
  const root=outputRoot||path.join(process.env.LOCALAPPDATA,'One4All-Desktop/vendor-resources',brand),warnings=[];fs.mkdirSync(path.join(root,'source'),{recursive:true});fs.mkdirSync(path.join(root,'assets'),{recursive:true});
  async function load(url,label,{refresh=false,validate}={}){
-  const dest=path.join(root,'source',label||hash(url).slice(0,24));
+  const dest=safeResourcePath(path.join(root,'source'),label||hash(url).slice(0,24));
   if(fs.existsSync(dest)&&(!refresh||offline))return fs.readFileSync(dest);
   if(offline)throw new Error('离线缓存缺少 '+url);
-  try{const response=await fetch(url,{signal:AbortSignal.timeout(25000)});if(!response.ok)throw new Error('HTTP '+response.status);const data=Buffer.from(await response.arrayBuffer());if(data.length>10*1024*1024)throw new Error('原厂资源过大');if(validate&&!validate(data))throw new Error('原厂返回内容无效');fs.writeFileSync(dest,data);return data;}catch(error){if(fs.existsSync(dest)){warnings.push(url+': '+error.message+'，沿用现有缓存');return fs.readFileSync(dest);}throw error;}
+  try{const {bytes:data}=await fetchResource(url);if(validate&&!validate(data))throw new Error('原厂返回内容无效');fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,data);return data;}catch(error){if(fs.existsSync(dest)){warnings.push(url+': '+error.message+'，沿用现有缓存');return fs.readFileSync(dest);}throw error;}
  }
- async function images(variants){const result=[];for(const variant of variants){try{const url=new URL(variant.imageUrl);if(url.protocol!=='https:')throw new Error('商品图地址必须使用 HTTPS');const suffix=/\.(png|jpe?g|webp|avif)(?:\?|$)/i.exec(url.href)?.[1]||'png';const file=path.join(root,'assets',hash(url.href).slice(0,24)+'.'+suffix);if(!fs.existsSync(file)){if(offline)throw new Error('缺少商品图缓存');const bytes=await load(url.href,'image-'+path.basename(file));if(bytes.subarray(0,100).toString().match(/<html|local_rate_limited/i))throw new Error('图片返回无效');fs.writeFileSync(file,bytes);}result.push({...variant,imagePath:file});}catch(error){warnings.push(variant.imageUrl+': '+error.message);}}return result;}
+ async function images(variants){const result=[];for(const variant of variants){try{const url=new URL(variant.imageUrl);const suffix=/\.(png|jpe?g|webp|avif)(?:\?|$)/i.exec(url.href)?.[1]||'png';const file=path.join(root,'assets',hash(url.href).slice(0,24)+'.'+suffix);if(!fs.existsSync(file)){if(offline)throw new Error('缺少商品图缓存');const bytes=await load(url.href,'image-'+path.basename(file),{validate:isImage});if(!isImage(bytes))throw new Error('图片返回无效');fs.writeFileSync(file,bytes);}result.push({...variant,imagePath:file});}catch(error){warnings.push(variant.imageUrl+': '+error.message);}}return result;}
  function save(devices,source){
   const unique=[...new Map(devices.map(row=>[row.id,row])).values()],result={schema:1,brand,generatedAt:new Date().toISOString(),source,devices:unique,stats:{models:unique.length,variants:unique.reduce((n,row)=>n+row.variants.length,0),protocol:'official-via',warnings}};
   if(!unique.length)throw new Error('未获取到兼具原厂定义与商品图的 '+brand+' 型号');

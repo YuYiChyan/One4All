@@ -4,7 +4,8 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const { startServer } = require('./local-server.cjs');
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, dialog, session, WebContentsView } = electron;
+const { app, BrowserWindow, ipcMain, dialog, session, WebContentsView, shell } = electron;
+const {attachPageNavigation}=require('../core/page-navigation.cjs');
 exports.start = function start({ stateRoot, payloadRoot, homeURL, getTheme = () => "light" }) {
 const standalone = Boolean(homeURL);
 if (global.__one4allHostStarted) return;
@@ -113,7 +114,6 @@ function genericHidSession(){
     }
     notify({status:'selected'});callback(selected.deviceId);
   });
-  ses.webRequest.onBeforeRequest((details,callback)=>{let ok=false;try{const u=new URL(details.url);ok=['file:','data:','blob:'].includes(u.protocol)||(u.protocol==='http:'&&u.origin===viaOrigin);}catch{}callback({cancel:!ok});});
   return ses;
 }
 
@@ -176,17 +176,7 @@ function sendEmbeddedState(win, state) {
 }
 
 function protectWebContents(wc, allowed) {
-  wc.setWindowOpenHandler(() => ({ action: 'deny' }));
-  wc.on('will-navigate', (event, url) => {
-    const ok = allowed(url);
-    log('will-navigate', { id: wc.id, url, allowed: ok });
-    if (!ok) event.preventDefault();
-  });
-  wc.on('will-redirect', (event, url) => {
-    const ok = allowed(url);
-    log('will-redirect', { id: wc.id, url, allowed: ok });
-    if (!ok) event.preventDefault();
-  });
+  attachPageNavigation(wc,{inside:allowed,openExternal:url=>shell.openExternal(url),onError:error=>log('link-error',error.message)});
 }
 
 function closeEmbedded() {
@@ -194,6 +184,7 @@ function closeEmbedded() {
   hidTest?.stop();
   viaTarget=null;
   const { win, view, layout, themeTimer } = embedded;
+  if(embedded.kind==='razer')razerChild?.kill();
   embedded = null;
   if (themeTimer) clearInterval(themeTimer);
   try { for(const event of ['resize','show','restore','focus'])win.off(event,layout); } catch {}
@@ -219,19 +210,19 @@ function ensureKeyboardSession() {
         matches: matches.length,
       });
       if (!matches.length) { callback(); return; }
+      if (matches.length===1) { callback(matches[0].deviceId); return; }
       try {
         const options = {
           type: 'question',
           title: '连接 Tank68 HE',
-          message: '允许官方网页驱动连接 Tank68 HE？',
-          detail: '只允许 0C45:8045，不授权其他外设。',
-          buttons: ['连接键盘', '取消'],
+          message: '发现多个 Tank68 HE 接口，请选择要设置的设备',
+          buttons: [...matches.map((d,i)=>(d.name||d.productName||'Tank68 HE')+' ('+(i+1)+')'), '取消'],
           defaultId: 0,
-          cancelId: 1,
+          cancelId: matches.length,
         };
         const parent = embedded?.win;
         const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
-        callback(result.response === 0 ? matches[0].deviceId : undefined);
+        callback(matches[result.response]?.deviceId);
       } catch { callback(); }
     });
   }
@@ -524,7 +515,8 @@ ipcMain.handle('dc-lab:tank-click-vendor', async (event, label) => {
   return true;
 });
 
-let razerBusy = false;
+let razerBusy = false,razerChild=null;
+app.on('before-quit',()=>razerChild?.kill());
 let lastRazerCardStatus = null;
 const allowedPollRates = new Set([125, 500, 1000, 2000, 4000, 8000]);
 function assertRazerPage(event) {
@@ -540,15 +532,16 @@ function assertRazerPage(event) {
 }
 async function runRazerControl(args) {
   const config = JSON.parse(fs.readFileSync(path.join(base, 'lab-config.json'), 'utf8'));
-  const output = await new Promise((resolve, reject) => require('child_process').execFile(
+  const output = await new Promise((resolve, reject) => {const child=require('child_process').execFile(
     config.python,
     [path.join(base, 'razer-control.py'), ...args],
-    { cwd: base, env:{...process.env, PYTHONUTF8:'1', ONE4ALL_DATA_DIR:path.join(dataRoot,'razer')}, windowsHide: true, timeout: 20000, maxBuffer: 1024 * 1024, encoding: 'utf8' },
+    { cwd: base, env:{...process.env, PYTHONUTF8:'1', ONE4ALL_DATA_DIR:path.join(dataRoot,'razer')}, windowsHide: true, maxBuffer: 1024 * 1024, encoding: 'utf8' },
     (error, stdout, stderr) => {
+      if(razerChild===child)razerChild=null;
       if (error) { reject(new Error(stderr || error.message)); return; }
       resolve(stdout);
     },
-  ));
+  );razerChild=child;});
   const parsed = JSON.parse(output);
   if (!parsed.ok) throw new Error(parsed.error || '雷蛇操作失败');
   return parsed;

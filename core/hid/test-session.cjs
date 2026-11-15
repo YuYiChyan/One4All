@@ -1,7 +1,7 @@
 /* Explicit foreground test session; owns at most one Windows-key guard. MIT. */
 'use strict';
 const {spawn}=require('node:child_process'),path=require('node:path'),{createInterface}=require('node:readline');
-function createTestSession({python,ownerPid=process.pid,spawnChild=spawn}={}){
+function createTestSession({python,ownerPid=process.pid,spawnChild=spawn,startupTimeoutMs=0}={}){
   let child=null,pending=null,active=false,callbacks=null;
   function stop(){active=false;const current=child;child=null;current?.kill();}
   function start({onKey,onStopped}={}){
@@ -12,7 +12,7 @@ function createTestSession({python,ownerPid=process.pid,spawnChild=spawn}={}){
       const proc=spawnChild(python,['-I','-B',path.join(__dirname,'windows_test_keys.py'),'--owner-pid',String(ownerPid)],{windowsHide:true,stdio:['ignore','pipe','ignore']});
       child=proc;let settled=false,reason='stopped';
       const finish=(error)=>{if(!settled){settled=true;clearTimeout(timer);error?reject(error):resolve({active:true,scope:'foreground-test'});}};
-      const timer=setTimeout(()=>{stop();finish(Error('测试模式启动超时'));},4000);
+      const timer=startupTimeoutMs>0?setTimeout(()=>{stop();finish(Error('测试模式启动超时'));},startupTimeoutMs):null;
       const lines=createInterface({input:proc.stdout});
       lines.on('line',line=>{
         let value;try{value=JSON.parse(line);}catch{return;}

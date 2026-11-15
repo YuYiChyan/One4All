@@ -9,10 +9,10 @@ const report=(...capabilities)=>({...base,capabilities});
 
 test('vendor identity or a loaded library alone never exposes settings',()=>{
   assert.deepEqual(normalizeCapabilities({vendorId:0x1532,capabilities:[rate]}),[]);
-  for(const change of [{connected:false},{interfaceConfirmed:false},{provider:''},{version:''},{evidence:[]}])assert.deepEqual(normalizeCapabilities({...report(rate),...change}),[]);
+  for(const change of [{connected:false},{interfaceConfirmed:false},{provider:''}])assert.deepEqual(normalizeCapabilities({...report(rate),...change}),[]);
 });
 test('only implemented, supported commands and device-provided ranges are visible',()=>{
-  const result=normalizeCapabilities(report(rate,{...actuation,range:null},{...rate,id:'imaginary'},{...actuation,supported:false},{...actuation,readable:false},{...rate,readCommand:'bad command'}));
+  const result=normalizeCapabilities(report(rate,{...actuation,range:null},{...rate,id:'imaginary'},{...actuation,supported:false},{...actuation,readable:false,writable:false},{...rate,readCommand:''}));
   assert.equal(result.length,1);assert.equal(result[0].id,'pollingRate');assert.equal(result[0].provider,'test-provider');
   assert.deepEqual(result[0].options.map(option=>option.value),[125,500,1000]);
   assert.equal(normalizeCapabilities(report(rate,rate)).length,1);
@@ -53,14 +53,30 @@ test('operations serialize and a failure does not poison subsequent requests',as
   assert.deepEqual(results.map(result=>result.status),['rejected','fulfilled','fulfilled']);
   assert.deepEqual(calls,['rate.write','rate.write','rate.read','rate.read']);
 });
-test('unreadable actions require explicit device acknowledgement',async()=>{
+test('write-only actions use the provider completion without requiring a fabricated acknowledgement',async()=>{
   const action={id:'calibration',supported:true,writable:true,writeCommand:'calibrate'};
   const controller=createController({report:report(action),execute:async()=>undefined});
-  await assert.rejects(controller.write('calibration',{}),/尚未确认/);
+  assert.equal(await controller.write('calibration',{}),undefined);
   const good=createController({report:report(action),execute:async()=>({ok:true})});
   assert.deepEqual(await good.write('calibration',{}),{ok:true});
 });
 test('catalogue covers mechanical and magnetic keyboards without implying support',()=>{
   for(const id of ['keymap','layers','macros','lightingEffect','pollingRate','debounce','winLock','activeProfile','actuation','rapidTrigger','dks','socd','calibration'])assert.ok(catalogue[id]);
   assert.deepEqual(normalizeCapabilities(report()),[]);
+});
+
+test('metadata omissions and write-only commands do not suppress implemented controls',async()=>{
+ const cap={...rate,readable:false,writeCommand:'vendor/set rate'};
+ const input={connected:true,provider:'adapter',capabilities:[cap]};
+ const result=normalizeCapabilities(input);assert.equal(result.length,1);assert.deepEqual(result[0].evidence,[]);
+ const calls=[],controller=createController({report:input,execute:async(...args)=>{calls.push(args);}});
+ assert.equal(await controller.write('pollingRate',500),undefined);assert.equal(calls[0][0],'vendor/set rate');
+});
+test('macro limits come from the adapter instead of fixed UI ceilings',()=>{
+ const macro={id:'macros',supported:true,writable:true,writeCommand:'macro.write',keys:['KeyA'],maxEvents:20000};
+ const [cap]=normalizeCapabilities(report(macro));assert.equal(cap.maxEvents,20000);
+ const value={name:'A'.repeat(100),events:[{type:'down',code:'KeyA',delayMs:90000}]};
+ assert.deepEqual(assertValue(cap,value),value);
+ const [bounded]=normalizeCapabilities(report({...macro,maxNameLength:30,maxDelayMs:1000}));
+ assert.throws(()=>assertValue(bounded,value));
 });

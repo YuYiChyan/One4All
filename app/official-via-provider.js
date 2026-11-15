@@ -29,12 +29,13 @@
    removeEventListener:(...args)=>hid.removeEventListener(...args),
   };
   try{
-   session=await abortable(root.One4AllVia.connect({definition,target:{vendorId:parsed.vendorId,productId:parsed.productId},hid:scopedHid}),late=>late.close());
+   session=await abortable(root.One4AllVia.connect({definition,target:{vendorId:parsed.vendorId,productId:parsed.productId},hid:scopedHid,signal}),late=>late.close());
    check();
    const originalClose=session.close;
    const close=async()=>{if(closed)return;closed=true;signal?.removeEventListener('abort',cancel);await originalClose();};
    const execute=async(command,payload)=>{check();if(closed)throw new Error('键盘已断开，请重新连接');return session.execute(command,payload);};
-   return {...session,device:{...session.device,name:model.name,interface:'VIA · USB'},execute,readKey:selection=>execute('via.keymap.read',{selection}).then(result=>result.value),close};
+   const device={...session.device,name:model.name,interface:'VIA · USB'};session.onDisconnect?.(()=>{device.connected=false;});
+   return {...session,device,execute,readKey:selection=>execute('via.keymap.read',{selection}).then(result=>result.value),close};
   }catch(error){signal?.removeEventListener('abort',cancel);if(session)await session.close().catch(()=>{});else if(pendingDevice?.opened)await pendingDevice.close().catch(()=>{});throw error;}
  }
  root.One4AllOfficialVia=Object.freeze({connect});
