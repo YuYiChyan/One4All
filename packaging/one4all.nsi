@@ -61,7 +61,7 @@ Function CheckApplicationClosed
  Goto done
  locked:
  IfSilent abort
- MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "请先关闭 One4All Desktop，然后重试。" IDRETRY retry
+ MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "请在系统托盘右键 One4All 图标，选择“退出 One4All”，然后重试。" IDRETRY retry
  abort:
  SetErrorLevel 2
  Abort
@@ -137,7 +137,7 @@ Function un.CheckApplicationClosed
  Goto done
  locked:
  IfSilent abort
- MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "请先关闭 One4All Desktop，然后重试卸载。" IDRETRY retry
+ MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "请在系统托盘右键 One4All 图标，选择“退出 One4All”，然后重试卸载。" IDRETRY retry
  abort:
  SetErrorLevel 2
  Abort

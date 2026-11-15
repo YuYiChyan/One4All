@@ -2,8 +2,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
-const {app, BrowserWindow, WebContentsView, ipcMain, session, shell, dialog, safeStorage, utilityProcess} = require('electron');
+const {app, BrowserWindow, WebContentsView, ipcMain, session, shell, dialog, safeStorage, utilityProcess, Tray, Menu} = require('electron');
 const {attachPageNavigation}=require('../core/page-navigation.cjs');
+const {createTrayController}=require('../core/tray-controller.cjs');
 const projectRoot = path.resolve(__dirname, '..');
 const stateRoot = process.env.ONE4ALL_DESKTOP_STATE || path.join(app.getPath('appData'), 'One4All-Desktop');
 app.setPath('userData', path.join(stateRoot, 'browser'));
@@ -14,7 +15,7 @@ const settingsPath = path.join(stateRoot,'settings.json');
 const readJson = (file,fallback) => {try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{return fallback;}};
 const settings = readJson(settingsPath,{theme:'light'});
 let ai, adapterRunner, deviceCatalog, razerService, logitechService, xiberiaService, maonoService, validation, localVerification, verificationServer, resourceRefresh;
-let mainWindow, runtime, packages, keyboardService, brandView, keyboardTarget, bootstrapInfo;
+let mainWindow, runtime, packages, keyboardService, brandView, keyboardTarget, bootstrapInfo, appTray;
 const packageRoot=process.env.ONE4ALL_DESKTOP_CACHE || path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'One4All-Desktop');
 function saveSettings(){fs.writeFileSync(settingsPath,JSON.stringify(settings,null,2));}
 function log(type,value){fs.appendFileSync(path.join(stateRoot,'desktop.log'),JSON.stringify({time:new Date().toISOString(),type,value})+'\n');}
@@ -96,7 +97,9 @@ async function openBrand(id){
 
 if(!app.requestSingleInstanceLock())app.quit();
 else {
-  app.on('second-instance',()=>{if(mainWindow){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}});
+  const showMainWindow=()=>{if(appTray)appTray.show();else if(mainWindow&&!mainWindow.isDestroyed()){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}};
+  app.on('second-instance',showMainWindow);
+  app.on('activate',showMainWindow);
   app.whenReady().then(async()=>{
     const payloadRoot=importExistingModules();
     const registered=readJson(path.join(stateRoot,'registry.json'),{plugins:[]});
@@ -194,6 +197,7 @@ else {
     mainWindow.webContents.on('console-message',(_event,details)=>{if(details.level==='error')log('renderer-error',details.message);});
     mainWindow.webContents.on('render-process-gone',(_event,details)=>log('renderer-gone',details));
     mainWindow.on('closed',()=>{closeBrand();runtime.closeDevice();mainWindow=null;});
+    appTray=createTrayController({app,window:mainWindow,Tray,Menu,iconPath:path.join(__dirname,'assets/one4all.ico'),onError:error=>log('tray-error',error.stack||error.message)});
     mainWindow.once('ready-to-show',()=>{if(process.env.ONE4ALL_DESKTOP_HIDDEN!=='1')mainWindow.show();});
     installKeyboardHid();
     await mainWindow.loadURL(homeURL);
