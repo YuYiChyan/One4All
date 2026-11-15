@@ -74,7 +74,7 @@
      selected=sourceFor(selected,member)?selected:variants.find(variant=>sourceFor(variant,member))||variants[0];
      if(selected)image.src=selected.imageUrl;remember(groupId,member,selected);updateMeta();mountPicker();
     };
-    copy.append(brandLine,title,memberSelect,meta);card.append(tools,art,copy);grid.append(card);updateMeta();mountPicker();
+    const add=el('button','secondary catalog-home-button','添加到主页');add.type='button';add.onclick=()=>{try{const key='one4all-home-models',items=JSON.parse(localStorage.getItem(key)||'[]'),id=member.id,variantId=sourceFor(selected,member)?.variantId||null;const next=Array.isArray(items)?items.filter(item=>item.id!==id):[];next.push({id,variantId});localStorage.setItem(key,JSON.stringify(next));add.textContent='已添加到主页';notify('已添加到主页');}catch(error){notify('添加失败：'+error.message);}};copy.append(brandLine,title,memberSelect,meta,add);card.append(tools,art,copy);grid.append(card);updateMeta();mountPicker();
     cardMounts.push({dispose(){verification?.dispose();picker?.dispose();}});
    }
    more.hidden=rows.length<=limit;return Promise.allSettled(ready);

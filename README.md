@@ -1,10 +1,12 @@
-# One4All · 0.7.0-preview.6
+# One4All · 0.7.0-preview.7
 
-One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.6.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
+One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.7.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
 
-[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.6) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
+[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.7) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
 
-0.7.0-preview.6 新增 MAONO PD100X RGB（352F:0108）常用声音控制，待实机验证；此前已接入 MAONO PD100X（352F:010C）原厂商品图与独立 USB 控制，接入统一麦克风设置页，沿用现有卡片和圆点切色。详情见 [PD100X 接入](docs/MAONO-PD100X.md)。
+0.7.0-preview.7 支持在支持库添加设备到主页，并可从主页移除；已有主页卡片保持不变。
+
+前版新增 MAONO PD100X RGB（352F:0108）常用声音控制，待实机验证；此前已接入 MAONO PD100X（352F:010C）原厂商品图与独立 USB 控制，接入统一麦克风设置页，沿用现有卡片和圆点切色。详情见 [PD100X 接入](docs/MAONO-PD100X.md)。
 
 本版也包含上一版完成的用户操作流程审计：去掉下载、资源刷新、模型生成和完整设备扫描中的默认硬性总时限，补上取消、重新下载与失败重试；修复人工设备选择倒计时、控件锁死、外链无反应和接口资料被任意裁剪等问题。原有设备范围、商品图、圆点切色及本机设置保留。逐项结果见 [操作流程审计](docs/OPERATION-AUDIT.md)。
 

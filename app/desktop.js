@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const api=window.one4allDesktop, $=id=>document.getElementById(id);
-  let page='devices',cards=[],keyboards=[],packages=[],selectedKeyboard=null,keyboardControls=null,viaSession=null,workbench=null,catalogView=null,mouseView=null,activeMouseModel=null,keyboardVersion=0,requestVersion=0,noticeTimer;
+  let page='devices',cards=[],homeModels=[],keyboards=[],packages=[],selectedKeyboard=null,keyboardControls=null,viaSession=null,workbench=null,catalogView=null,mouseView=null,activeMouseModel=null,keyboardVersion=0,requestVersion=0,noticeTimer;
   let mouseClosing=Promise.resolve(),keyboardModel=null,keyboardClosing=Promise.resolve(),embeddedClosing=Promise.resolve(),embeddedOpening=Promise.resolve(),cardViews=[],viaConnectController=null,keyboardScans=0,keyboardAutoScan=true;
   const colors=new Map(),progress=new Map();try{for(const [id,color] of Object.entries(JSON.parse(localStorage.getItem('one4all-colors')||'{}')))if(typeof color==='string')colors.set(id,color);}catch{}
   function rememberColor(id,color){colors.set(id,color);localStorage.setItem('one4all-colors',JSON.stringify(Object.fromEntries(colors)));}
@@ -32,9 +32,13 @@
     for(const card of cards){const root=el('article','device-card'),open=button('',()=>api.openDevice(card.id,colors.get(card.id)||card.defaultColor),'product-open');open.setAttribute('aria-label','打开 '+card.title);const img=el('img');img.alt=card.title;img.src=card.colors?.find(c=>c.id===colors.get(card.id))?.artUrl||card.artUrl||'';if(img.getAttribute('src'))open.append(img);else open.append(el('span','fallback-art',card.title));
       const colorRow=el('div','product-tools');cardViews.push(One4AllColorPicker.mount(colorRow,{variants:(card.colors||[]).map(c=>({id:c.id,name:colorMeta(c.id).label,color:colorMeta(c.id).swatch,imageUrl:c.artUrl})),selectedId:colors.get(card.id)||card.defaultColor,image:img,onSelect:c=>rememberColor(card.id,c.id)}));
       const copy=el('div','card-copy'),title=button('',()=>api.openDevice(card.id,colors.get(card.id)||card.defaultColor),'card-title');title.append(el('h2','',card.title.replace(' · 本地控制器','')));copy.append(title,el('div','card-meta',[card.brand,card.type==='keyboard'?'键盘':card.type==='mouse'?'鼠标':card.type==='charger'?'充电器':card.type||'设备'].filter(Boolean).join(' · ')));root.append(colorRow,open,copy);grid.append(root);
-    }if(cards.length)$('content').append(grid);else{const welcome=empty('添加你的设备','从支持库选择设备，连接后即可进入设置。');welcome.append(button('打开支持库',()=>navigate('packages'),'primary'));$('content').append(welcome);}
+    }
+    for(const entry of homeModels){const model=entry.model,root=el('article','device-card'),open=button('',()=>openCatalogModel({...model,selectedVariant:entry.variantId}),'product-open');open.setAttribute('aria-label','打开 '+model.name);const image=el('img'),variants=(model.variants||[]).filter(v=>v.imageUrl);image.alt=model.name;let selected=variants.find(v=>v.id===entry.variantId)||variants[0];if(selected){image.src=selected.imageUrl;open.append(image);}const tools=el('div','product-tools');cardViews.push(One4AllColorPicker.mount(tools,{variants,selectedId:selected?.id,image,onSelect:variant=>{entry.variantId=variant.id;saveHomeModels();}}));const copy=el('div','card-copy'),title=button('',()=>openCatalogModel({...model,selectedVariant:entry.variantId}),'card-title');title.append(el('h2','',model.name));const remove=button('从主页移除',()=>{homeModels=homeModels.filter(item=>item.id!==entry.id);saveHomeModels();renderDevices();});copy.append(title,el('div','card-meta',[model.brand,({mouse:'鼠标',keyboard:'键盘',headset:'耳机',microphone:'麦克风'})[model.kind]||'设备'].join(' · ')),remove);root.append(tools,open,copy);grid.append(root);}
+    if(cards.length||homeModels.length)$('content').append(grid);else{const welcome=empty('添加你的设备','从支持库选择设备，连接后即可进入设置。');welcome.append(button('打开支持库',()=>navigate('packages'),'primary'));$('content').append(welcome);}
     const brand=el('section','brand-entry'),copy=el('div');copy.append(el('h2','','One4All 支持库'),el('p','','查找键盘、鼠标、耳机及其他设备，进入统一设置'));brand.append(copy,button('项目主页',()=>api.openProject()),button('浏览设备',()=>navigate('packages'),'primary'));$('content').append(brand);
   }
+  function saveHomeModels(){localStorage.setItem('one4all-home-models',JSON.stringify(homeModels.map(({id,variantId})=>({id,variantId}))));}
+  async function loadHomeModels(){let saved=[];try{saved=JSON.parse(localStorage.getItem('one4all-home-models')||'[]');if(!Array.isArray(saved))saved=[];}catch{}if(!saved.length){homeModels=[];return;}const catalog=await api.getDeviceCatalog();homeModels=saved.map(item=>({...item,model:catalog.devices.find(model=>model.id===item.id)})).filter(item=>item.model);}
   const packageName=p=>p.name||p.title||({mchose:'MCHOSE HUB',razer:'Razer Synapse',logitech:'Logitech G HUB'}[p.id])||p.id;
   function packageState(p){const s=p.status||p;return s;}
   function renderPackageRows(list){list.replaceChildren();for(const p of packages){const s=packageState(p),row=el('article','package-row'),heading=el('div');heading.append(el('h2','',packageName(p)),el('p','vendor-note',p.source?.type==='github'?'GitHub 适配模块':'官方来源'));
@@ -82,7 +86,7 @@
     for(const b of document.querySelectorAll('[data-page]'))b.classList.toggle('active',b.dataset.page===page);
     const title={devices:['我的设备','已接入的设备与常用设置'],keyboard:['键盘','按设备支持的功能提供统一控件'],packages:['支持库','品牌驱动与设备模块，按需获取'],workbench:['适配工作台','使用自己的模型接口，生成设备适配模块']}[page];
     $('page-title').textContent=title[0];$('page-caption').textContent=title[1];clear();await closeEmbedded();if(rev!==requestVersion)return;
-    if(page==='devices'){cards=await api.listCards();if(rev===requestVersion)renderDevices();}
+    if(page==='devices'){cards=await api.listCards();await loadHomeModels();if(rev===requestVersion)renderDevices();}
     else if(page==='packages')await loadPackages(rev);
     else if(page==='workbench'){workbench=One4AllWorkbench.render($('content'),{api,notify,isCurrent:()=>rev===requestVersion&&page==='workbench'});await workbench.ready;}
     else{const result=await detectKeyboards();if(rev!==requestVersion)return;keyboards=(Array.isArray(result)?result:result.devices||[]).filter(d=>d.detection?.kind!=='mouse'&&(d.standardKeyboard||d.detection?.kind==='keyboard'||d.protocolHints?.includes('qmk-raw-hid-interface')));renderKeyboard();}
