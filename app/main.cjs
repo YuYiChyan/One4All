@@ -113,6 +113,7 @@ else {
     resourceRefresh=require('../core/resource-refresh.cjs').createResourceRefresh({utilityProcess});
     handle('refresh-resources',brand=>resourceRefresh.run(brand));
     handle('cancel-resource-refresh',brand=>resourceRefresh.cancel(brand));
+    handle('voice-model-assets',()=>{const root=path.join(__dirname,'voice-vendor','deepfilter');return {wasm:fs.readFileSync(path.join(root,'df_bg.wasm')),model:fs.readFileSync(path.join(root,'DeepFilterNet3_onnx.tar.gz'))};});
     handle('device-catalog',()=>{const catalog=deviceCatalog.list();return {...catalog,presentation:require('../core/catalog-presentation.cjs').buildCatalogPresentation(catalog.devices),brands:require('../core/domestic-models.cjs').BRANDS};});
     handle('razer-scan',()=>razerService.scan());
     handle('razer-cancel',()=>razerService.cancelPending());

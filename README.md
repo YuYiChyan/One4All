@@ -1,10 +1,10 @@
-# One4All · 0.7.0-preview.10
+# One4All · 0.7.0-preview.11
 
-One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.10.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
+One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.11.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
 
-[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.10) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
+[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.11) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
 
-0.7.0-preview.10 新增声音优化卡片：传统实时音高、EQ、压缩与耳机试听，可通过 VB-CABLE 接入语音软件。使用方式见 [声音优化](docs/VOICE-TOOLS.md)。
+0.7.0-preview.11 扩展声音优化：加入本机 DeepFilterNet3 降噪、音色和轻度压缩的实时控制，可通过 VB-CABLE 接入语音软件。使用方式见 [声音优化](docs/VOICE-TOOLS.md)。
 
 前版将主页卡片的添加和移除放入右上角菜单；安装包自带 TANK68HE、Razer Viper Mini SE 和 CUKTECH 10 Ultra 的原有卡片及控制程序。已有用户的卡片与设置保持不变。
 

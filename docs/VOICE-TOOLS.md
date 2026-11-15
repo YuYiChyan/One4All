@@ -1,9 +1,9 @@
 # 声音优化
 
-主页的声音优化卡片为麦克风提供本机实时处理：SoundTouchJS 传统移调（默认 +1 半音）、EQ、轻度压缩和高频柔化，不使用 AI。选择输入麦克风，将输出选择为 VB-CABLE Input，启动后在聊天软件中选择 VB-CABLE Output。虚拟声卡可在卡片中从官方源下载并安装；驱动按官方要求可能需要重启。
+主页的声音优化卡片提供本机实时音高、低频厚度、尖锐柔化、清晰度、气音柔化、压缩和 DeepFilterNet3 降噪调节。默认压缩比例 1.3:1，1:1 为关闭；降噪衰减默认上限 12 dB，0 dB 表示不衰减。降噪使用本地神经网络，不识别用户身份、不模仿或替换声音，也不上传录音。调整可在试听时立即生效。
 
-处理在 One4All 运行期间持续，切换页面不会关闭。关闭 One4All 或点击停止后处理结束，不会改变 Windows 默认输入设备。未连接虚拟声卡时不将麦克风输出到扬声器。
+选择输入麦克风，将输出选择为 VB-CABLE Input，启动后在聊天软件中选择 VB-CABLE Output。也可戴耳机点击试听。虚拟声卡可在卡片中从官方源下载并安装；驱动按官方要求可能需要重启。处理在 One4All 运行期间持续，切换页面不会关闭。关闭 One4All 或点击停止后处理结束，不会改变 Windows 默认输入设备。
 
-声音参数是试听起点，并非对任何人的声音做判断。个别硬件和实时效果需要实际试听；SoundTouch 处理会引入延迟。
+降噪和音色是试听起点，键盘声与人声重叠时不能保证完全去除。设备负载、声音特征和声学环境会影响效果，建议从低强度开始调整。实时处理会引入延迟。
 
-SoundTouchJS AudioWorklet 2.1.1 是 MPL-2.0 项目，发布源代码见 https://github.com/cutterbl/SoundTouchJS ，许可证在 app/voice-vendor/LICENSE。VB-CABLE 从其官网获取，并按官方许可证安装，不内置驱动安装包。
+音高采用 SoundTouchJS AudioWorklet 2.1.1（MPL-2.0），源码 https://github.com/cutterbl/SoundTouchJS ，许可证在 app/voice-vendor/。降噪使用 @workadventure/noise-suppression 0.2.0（MIT）的 DeepFilterNet3 AudioWorklet、WASM 与模型，源码 https://github.com/workadventure/noise-suppression ，DeepFilterNet 源码与模型 https://github.com/Rikorose/DeepFilterNet （MIT / Apache-2.0）；许可证在 app/voice-vendor/deepfilter/。对工作线程的修改为增加实时衰减上限消息。VB-CABLE 从其官网获取，并按官方许可证安装，不内置驱动安装包。

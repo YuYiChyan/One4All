@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('one4allDesktop',Object.freeze({
   refreshResources:brand=>invoke('refresh-resources',brand),
   cancelResourceRefresh:brand=>invoke('cancel-resource-refresh',brand),
   getDeviceCatalog:()=>invoke('device-catalog'),
+  voiceModelAssets:()=>invoke('voice-model-assets'),
   scanRazer:()=>invoke('razer-scan'),
   cancelRazerDetection:()=>invoke('razer-cancel'),
   razerStatus:id=>invoke('razer-status',id),
