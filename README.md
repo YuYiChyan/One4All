@@ -1,10 +1,10 @@
-# One4All · 0.7.0-preview.7
+# One4All · 0.7.0-preview.8
 
-One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.7.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
+One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.8.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
 
-[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.7) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
+[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.8) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
 
-0.7.0-preview.7 支持在支持库添加设备到主页，并可从主页移除；已有主页卡片保持不变。
+0.7.0-preview.8 将主页卡片的添加和移除放入右上角菜单；安装包自带 TANK68HE、Razer Viper Mini SE 和 CUKTECH 10 Ultra 的原有卡片及控制程序。已有用户的卡片与设置保持不变。
 
 前版新增 MAONO PD100X RGB（352F:0108）常用声音控制，待实机验证；此前已接入 MAONO PD100X（352F:010C）原厂商品图与独立 USB 控制，接入统一麦克风设置页，沿用现有卡片和圆点切色。详情见 [PD100X 接入](docs/MAONO-PD100X.md)。
 
