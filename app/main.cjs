@@ -13,7 +13,7 @@ const homeURL = pathToFileURL(path.join(__dirname,'index.html')).href;
 const settingsPath = path.join(stateRoot,'settings.json');
 const readJson = (file,fallback) => {try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{return fallback;}};
 const settings = readJson(settingsPath,{theme:'light'});
-let ai, adapterRunner, deviceCatalog, razerService, logitechService, xiberiaService, validation, localVerification, verificationServer, resourceRefresh;
+let ai, adapterRunner, deviceCatalog, razerService, logitechService, xiberiaService, maonoService, validation, localVerification, verificationServer, resourceRefresh;
 let mainWindow, runtime, packages, keyboardService, brandView, keyboardTarget, bootstrapInfo;
 const packageRoot=process.env.ONE4ALL_DESKTOP_CACHE || path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'One4All-Desktop');
 function saveSettings(){fs.writeFileSync(settingsPath,JSON.stringify(settings,null,2));}
@@ -122,6 +122,11 @@ else {
     handle('logitech-cancel',()=>logitechService.cancelPending());
     handle('logitech-status',id=>logitechService.status(id));
     handle('logitech-execute',request=>logitechService.execute(request));
+    maonoService=require('../core/maono-models.cjs').createMaonoService({payloadRoot,stateRoot});
+    handle('maono-scan',()=>maonoService.scan());
+    handle('maono-status',id=>maonoService.status(id));
+    handle('maono-execute',request=>maonoService.execute(request));
+    handle('maono-cancel',()=>maonoService.cancelPending());
     handle('xiberia-scan',()=>xiberiaService.scan());
     handle('xiberia-status',id=>xiberiaService.status(id));
     handle('xiberia-execute',request=>xiberiaService.execute(request));
@@ -194,5 +199,5 @@ else {
     log('ready',{version:app.getVersion(),cards:runtime.listCards().map(card=>card.id),payloadRoot});
   }).catch(error=>{log('startup-error',error.stack||error.message);dialog.showErrorBox('One4All 启动失败',error.message);app.quit();});
   app.on('window-all-closed',()=>app.quit());
-  app.on('before-quit',()=>{adapterRunner?.stop();resourceRefresh?.close();razerService?.close().catch(()=>{});logitechService?.close().catch(()=>{});xiberiaService?.close().catch(()=>{});keyboardService?.close().catch(()=>{});});
+  app.on('before-quit',()=>{adapterRunner?.stop();resourceRefresh?.close();razerService?.close().catch(()=>{});logitechService?.close().catch(()=>{});xiberiaService?.close().catch(()=>{});maonoService?.close().catch(()=>{});keyboardService?.close().catch(()=>{});});
 }

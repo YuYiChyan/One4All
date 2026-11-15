@@ -91,5 +91,23 @@
     ],
     "adapter": "xiberia-xhub",
     "verifiedOn": "2026-11-12"
+  },
+  {
+    "id": "maono",
+    "name": "MAONO Link",
+    "brand": "MAONO",
+    "description": "PD100X 使用独立控制；需要原厂应用时可从官网获取。",
+    "homepage": "https://www.maono.com/pages/maono-software-download-center",
+    "source": {
+      "type": "official",
+      "url": "https://update.maono.com/MaonoLink/Maono%20Link_V4.8.3_1106.exe",
+      "filename": "Maono-Link-V4.8.3.exe",
+      "format": "exe"
+    },
+    "installedExecutables": [
+      "%ProgramFiles%/Maono Link/Maono Link.exe",
+      "%LOCALAPPDATA%/Programs/Maono Link/Maono Link.exe"
+    ],
+    "verifiedOn": "2026-11-15"
   }
 ]

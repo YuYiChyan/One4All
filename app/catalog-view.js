@@ -1,14 +1,14 @@
 (() => {
  'use strict';
  const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
- const kindNames={mouse:'鼠标',keyboard:'键盘',headset:'耳机',charger:'充电器'},selectionKey='one4all-catalog-selection';
+ const kindNames={mouse:'鼠标',keyboard:'键盘',headset:'耳机',microphone:'麦克风',charger:'充电器'},selectionKey='one4all-catalog-selection';
  const imageOf=variant=>variant?.imageUrl||variant?.artUrl||variant?.image||null;
  window.One4AllCatalog={render(container,{api,notify=()=>{},onOpen=()=>{}}){
   let alive=true,catalog={devices:[]},serverRecords=[],limit=24,cardMounts=[],settingsDialog=null,selections={},refreshing=null,refreshingStatus=false;
   try{const saved=JSON.parse(localStorage.getItem(selectionKey)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))selections=saved;}catch{}
   const mount=el('section','model-catalog'),filters=el('div','catalog-filters'),brand=el('select'),kind=el('select'),search=el('input');
   brand.setAttribute('aria-label','筛选品牌');kind.setAttribute('aria-label','筛选设备类型');
-  for(const [value,label]of [['','全部设备'],['mouse','鼠标'],['keyboard','键盘'],['headset','耳机']]){const option=el('option','',label);option.value=value;kind.append(option);}
+  for(const [value,label]of [['','全部设备'],['mouse','鼠标'],['keyboard','键盘'],['headset','耳机'],['microphone','麦克风']]){const option=el('option','',label);option.value=value;kind.append(option);}
   search.type='search';search.placeholder='搜索型号';search.setAttribute('aria-label','搜索型号');
   const refresh=el('button','secondary','更新型号');refresh.type='button';filters.append(brand,kind,search,refresh);
   const summary=el('div','catalog-summary'),count=el('span','catalog-count','正在读取设备…'),summaryActions=el('div','catalog-summary-actions');

@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "brand": "maono",
+  "source": {
+    "url": "https://www.maono.com/pages/maono-software-download-center",
+    "version": "4.8.3",
+    "artwork": "Maono Link 4.8.3 / PD100X.dll Qt resource Images/left/PD100X_New.png"
+  },
+  "models": [{
+    "id": "maono-pd100x",
+    "name": "MAONO PD100X",
+    "brand": "maono",
+    "kind": "microphone",
+    "catalogRole": "device",
+    "description": "USB / XLR 动圈麦克风 · USB 控制",
+    "identifiers": [{"vendorId": 13615, "productId": 268}],
+    "aliases": ["PD100X Podcast Microphone", "闪克 PD100X"],
+    "variants": [{
+      "id": "black", "name": "黑色", "color": "#222326",
+      "file": "pd100x-black.png",
+      "sha256": "a4447c89492703723f798b186b3ff2f7598aa72dd9dc26c58d19f12199c426a2",
+      "source": {"module": "PD100X.dll", "resource": "Images/left/PD100X_New.png"}
+    }],
+    "source": {"provider": "maono-hidapi", "version": "4.8.3", "url": "https://www.maono.com/pages/maono-software-download-center"},
+    "support": {
+      "provider": "maono-hidapi", "protocol": "pd100x-010c", "version": "pd100x-hid-1",
+      "status": "unverified", "hardwareVerified": false,
+      "filters": [{"vendorId": 13615, "productId": 268}],
+      "usagePage": 12, "usage": 1, "reportId": 75
+    }
+  }]
+}
