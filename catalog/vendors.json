@@ -109,5 +109,19 @@
       "%LOCALAPPDATA%/Programs/Maono Link/Maono Link.exe"
     ],
     "verifiedOn": "2026-11-15"
+  },
+  {
+    "id": "vb-cable",
+    "name": "VB-CABLE 虚拟声卡",
+    "brand": "VB-Audio",
+    "description": "把声音优化后的麦克风发送到语音软件。",
+    "homepage": "https://vb-audio.com/Cable/",
+    "source": {
+      "type": "official",
+      "url": "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack46.zip",
+      "filename": "VBCABLE_Driver_Pack46.zip",
+      "format": "zip"
+    },
+    "installedExecutables": []
   }
 ]

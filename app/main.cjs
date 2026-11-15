@@ -49,8 +49,8 @@ async function chooseDevice(devices,message){
 function installKeyboardHid(){
   const ses=session.defaultSession;
   const originOK=url=>url===homeURL || url==='file://';
-  ses.setPermissionCheckHandler((_wc,permission,origin)=>permission==='hid'&&Boolean(keyboardTarget)&&originOK(origin));
-  ses.setPermissionRequestHandler((wc,permission,callback)=>callback(wc===mainWindow?.webContents&&permission==='hid'&&Boolean(keyboardTarget)));
+  ses.setPermissionCheckHandler((wc,permission,origin,details)=>wc===mainWindow?.webContents&&((permission==='hid'&&Boolean(keyboardTarget)&&originOK(origin))||((permission==='media'||permission==='speaker-selection')&&details.requestingUrl?.split(/[?#]/)[0]===homeURL&&(permission!=='media'||details.mediaType!=='video'))));
+  ses.setPermissionRequestHandler((wc,permission,callback,details)=>callback(wc===mainWindow?.webContents&&((permission==='hid'&&Boolean(keyboardTarget))||(permission==='media'&&(!details.mediaTypes||details.mediaTypes.every(type=>type==='audio')))||permission==='speaker-selection')));
   const matches=require('../core/domestic-models.cjs').matchesHidTarget;
   ses.setDevicePermissionHandler(details=>details.deviceType==='hid'&&originOK(details.origin)&&matches(details.device,keyboardTarget));
   ses.on('select-hid-device',async(event,details,callback)=>{
@@ -188,7 +188,7 @@ else {
     handle('keyboard-capabilities',()=>[]);
     handle('keyboard-execute',()=>{throw Error('该设备尚未提供此设置接口，请使用已接入的原厂控制页。');});
     handle('app-info',()=>({version:app.getVersion(),stateRoot,payloadRoot,runtime:process.versions.electron,freshInstall:bootstrapInfo.freshInstall}));
-    mainWindow=new BrowserWindow({title:'One4All',icon:path.join(__dirname,'assets/one4all.png'),width:1360,height:900,minWidth:960,minHeight:680,backgroundColor:settings.theme==='dark'?'#14171c':'#f5f6f8',autoHideMenuBar:true,show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+    mainWindow=new BrowserWindow({title:'One4All',icon:path.join(__dirname,'assets/one4all.png'),width:1360,height:900,minWidth:960,minHeight:680,backgroundColor:settings.theme==='dark'?'#14171c':'#f5f6f8',autoHideMenuBar:true,show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
     attachPageNavigation(mainWindow.webContents,{inside:url=>url.split(/[?#]/)[0]===homeURL,openExternal:url=>shell.openExternal(url),onError:error=>log('link-error',error.message)});
     mainWindow.webContents.on('console-message',(_event,details)=>{if(details.level==='error')log('renderer-error',details.message);});
     mainWindow.webContents.on('render-process-gone',(_event,details)=>log('renderer-gone',details));
