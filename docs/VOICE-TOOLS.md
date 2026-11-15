@@ -1,11 +1,35 @@
 # 声音优化
 
-主页的声音优化卡片提供本机实时音高、低频厚度、尖锐柔化、清晰度、气音柔化、压缩和 DeepFilterNet3 降噪调节。默认压缩比例 1.3:1，1:1 为关闭；降噪衰减默认上限 12 dB，0 dB 表示不衰减。降噪使用本地神经网络，不识别用户身份、不模仿或替换声音，也不上传录音。调整可在试听时立即生效。
+主页的声音优化卡片提供两套本机处理方案，可以切换、分别调整并录音对比。参数自动保存。
 
-选择输入麦克风，将输出选择为 VB-CABLE Input，启动后在聊天软件中选择 VB-CABLE Output。也可戴耳机点击试听。虚拟声卡可在卡片中从官方源下载并安装；驱动按官方要求可能需要重启。处理在 One4All 运行期间持续，切换页面、最小化或点击窗口关闭按钮不会停止。关闭窗口后 One4All 留在系统托盘，单击托盘图标或再次打开程序即可恢复原窗口；托盘右键菜单中的“退出 One4All”会彻底退出并结束声音处理。声音优化页的停止按钮只停止音频处理。这些操作不会改变 Windows 默认输入设备。
+- **A · 原方案**：首次升级时保留原来保存的音高、低频厚度、尖锐柔化、清晰度、气音柔化、降噪、压缩阈值、比例、起音和恢复这十项数值，继续使用原有 SoundTouch 变调。
+- **B · 自然方案**：使用 Signalsmith Stretch 进行音高调整，可选择升降音高时保持共鸣，也可独立调整“共鸣音色”。共鸣音色负值偏厚、正值偏亮；它改变声音的频谱包络，不是混响。B 另有动态齿音抑制，按高频强度平滑降低嘶声频段，保留低频人声；它不是呼吸声识别。
+- **共同背景降噪**：两条处理链共用一次 DeepFilterNet3 降噪，调整这个控件会同步到 A、B。衰减上限为 0 dB 时不衰减；压缩比例设为 1:1 可关闭压缩。降噪使用本地模型，不上传录音；变调与齿音处理均在本机完成。
+
+首次使用时，两档从中性参数开始；用户可自行调整，设置保存在本机。
+
+## 录后比较
+
+点击“录制 A / B 对比”，说一小段后点击“结束录音”。两档同时记录同一个麦克风输入，再通过“回放 A”或“回放 B”从所选耳机播放。即使没有向虚拟声卡发送声音，也可以单独录制；仅录音时，结束录音会释放麦克风和处理引擎，录好的片段仍可回放。
+
+“对齐 A / B 回放音量”按录音的 RMS 能量近似对齐响度，只调整回放音量，不改变保存的参数、原始片段或发送给语音软件的声音。已经录好的声音不会随之后的参数调整变化，修改参数后需要重新录制。录音片段保存在本机内存中，新一轮录音会替换上一轮，退出程序后不保留。
+
+## 语音发送与耳机返听
+
+选择实际输入麦克风，点击“启动声音优化”，程序会自动选择普通 **CABLE Input** 作为虚拟声卡发送入口；语音软件的麦克风选择 **CABLE Output**。电脑播放设备继续选自己的耳机。虚拟声卡可在“声音连接与说明”中从官方源下载并安装；驱动按官方要求可能需要重启。
+
+实时返听默认关闭，需要时点击“临时开启返听”，使用独立的“试听与回放耳机”和“返听音量”。返听、录音回放和虚拟麦克风发送各有自己的用途：切换回放片段或关闭返听不会改掉虚拟声卡的发送路线。停止发送时，已经开启的返听或录音可以继续；关闭返听时，已经启动的语音发送可以继续。这些操作不会改变 Windows 的默认输入或播放设备。
+
+处理在 One4All 运行期间持续，切换页面、最小化或点击窗口关闭按钮不会停止。关闭窗口后 One4All 留在系统托盘，单击托盘图标或再次打开程序即可恢复原窗口；托盘右键菜单中的“退出 One4All”会彻底退出并结束声音处理。
 
 托盘图标可能位于 Windows 任务栏的“显示隐藏的图标”箭头里。更新安装或卸载前，也请从托盘菜单退出程序。
 
 降噪和音色是试听起点，键盘声与人声重叠时不能保证完全去除。设备负载、声音特征和声学环境会影响效果，建议从低强度开始调整。实时处理会引入延迟。
 
-音高采用 SoundTouchJS AudioWorklet 2.1.1（MPL-2.0），源码 https://github.com/cutterbl/SoundTouchJS ，许可证在 app/voice-vendor/。降噪使用 @workadventure/noise-suppression 0.2.0（MIT）的 DeepFilterNet3 AudioWorklet、WASM 与模型，源码 https://github.com/workadventure/noise-suppression ，DeepFilterNet 源码与模型 https://github.com/Rikorose/DeepFilterNet （MIT / Apache-2.0）；许可证在 app/voice-vendor/deepfilter/。对工作线程的修改为增加实时衰减上限消息。VB-CABLE 从其官网获取，并按官方许可证安装，不内置驱动安装包。
+## 随包组件
+
+A 的音高处理采用 [SoundTouchJS AudioWorklet 2.1.1](https://github.com/cutterbl/SoundTouchJS)（MPL-2.0），许可证在 `app/voice-vendor/`。
+
+B 的自然变调与共鸣控制采用随包提供的 **Signalsmith Stretch Web 1.3.2（MIT）**，运行时从本地加载 AudioWorklet 与内嵌 WASM。上游版本、下载来源与接入说明见 [SOURCE.md](../app/voice-vendor/signalsmith/SOURCE.md)，完整许可证见 [LICENSE.txt](../app/voice-vendor/signalsmith/LICENSE.txt)。
+
+共同降噪使用 [@workadventure/noise-suppression 0.2.0](https://github.com/workadventure/noise-suppression)（MIT）的 DeepFilterNet3 AudioWorklet、WASM 与模型；[DeepFilterNet 源码与模型](https://github.com/Rikorose/DeepFilterNet)采用 MIT / Apache-2.0，许可证在 `app/voice-vendor/deepfilter/`。对工作线程的修改为增加实时衰减上限消息。VB-CABLE 从其官网获取，并按官方许可证安装，不内置驱动安装包。
