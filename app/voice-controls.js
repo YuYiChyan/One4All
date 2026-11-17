@@ -13,7 +13,8 @@
  for(const preset of Object.values(bank))for(const field of ['input','output','monitorOutput','monitorVolume'])delete preset[field];
  let active=savedBank?.active==='B'?'B':'A';
  const routes={input:previous.input||'',output:previous.output||'',monitorOutput:previous.monitorOutput||'',monitorVolume:previous.monitorVolume??35};
- let engine=null,starting=null,view=null,recording=null,clips=null,busy=false;
+ let engine=null,starting=null,view=null,recording=null,clips=null,busy=false,backgroundNotify=()=>{},deviceTimer=null;
+ const autoKey='one4all-voice-auto-resume';let wanted=localStorage.getItem(autoKey)==='1',recovering=null,backgroundError='';
  const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
  const cable=d=>/cable input|cable in 16ch|vb-audio.*cable/i.test(d.label);
  const save=()=>{localStorage.setItem(bankKey,JSON.stringify({active,...bank}));localStorage.setItem(key,JSON.stringify({...bank[active],...routes}));};
@@ -65,8 +66,11 @@
  async function createEngine(api){
   let stream,context;const branches={};
   try{
-   const devices=await navigator.mediaDevices.enumerateDevices(),inputs=devices.filter(d=>d.kind==='audioinput');
-   const input=inputs.find(d=>d.deviceId===routes.input)||inputs.find(d=>!/cable|vb-audio/i.test(d.label));
+   let devices=await navigator.mediaDevices.enumerateDevices(),inputs=devices.filter(d=>d.kind==='audioinput');
+   if(!inputs.some(d=>d.label)){const probe=await navigator.mediaDevices.getUserMedia({audio:true,video:false});probe.getTracks().forEach(track=>track.stop());devices=await navigator.mediaDevices.enumerateDevices();inputs=devices.filter(d=>d.kind==='audioinput');}
+   const physical=inputs.filter(d=>!/cable|vb-audio/i.test(d.label));
+   const input=physical.find(d=>d.deviceId===routes.input)||physical.find(d=>d.deviceId!=='default'&&d.deviceId!=='communications')||physical.find(d=>d.deviceId==='default');
+   if(!input||(!input.label&&input.deviceId==='default'))throw Error('未找到可用的实际麦克风，请选择输入后重试');
    stream=await navigator.mediaDevices.getUserMedia({audio:{...(input?{deviceId:{exact:input.deviceId}}:{}),channelCount:{ideal:1},echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
    routes.input=stream.getAudioTracks()[0].getSettings().deviceId||routes.input;
    context=new AudioContext({latencyHint:'interactive',sampleRate:48000,sinkId:{type:'none'}});
@@ -83,6 +87,7 @@
    branches.A=await buildBranch(context,'A',denoiser,bus);
    branches.B=await buildBranch(context,'B',denoiser,bus);
    engine={stream,context,branches,denoiser,bus,tap,sending:false,monitorAudio:null};
+   stream.getAudioTracks()[0]?.addEventListener('ended',()=>{if(wanted&&engine?.stream===stream){backgroundError='麦克风已断开，等待设备重新连接';backgroundNotify(backgroundError);api.restoreVoiceDefault().catch(report);stop().catch(report);view?.refresh();}});
    save();update();view?.refresh();return engine;
   }catch(error){
    stream?.getTracks().forEach(track=>track.stop());
@@ -97,8 +102,8 @@
    const devices=await navigator.mediaDevices.enumerateDevices(),outputs=devices.filter(d=>d.kind==='audiooutput'&&cable(d));
    const output=outputs.find(d=>d.deviceId===routes.output)||outputs.find(d=>/cable input/i.test(d.label)&&!/16ch/i.test(d.label));
    if(!output)throw Error('未找到虚拟声卡，请安装 VB-CABLE 后重试。');
-   const current=await ensureEngine(api);await current.context.setSinkId(output.deviceId);current.sending=true;routes.output=output.deviceId;save();
-  }else if(engine){await engine.context.setSinkId({type:'none'});engine.sending=false;if(!engine.monitorAudio&&!recording)await stop();}
+   const current=await ensureEngine(api);try{await current.context.setSinkId(output.deviceId);await api.activateVoiceDefault();}catch(error){await current.context.setSinkId({type:'none'}).catch(()=>{});if(!current.monitorAudio&&!recording)await stop();throw error;}current.sending=true;routes.output=output.deviceId;wanted=true;localStorage.setItem(autoKey,'1');backgroundError='';save();try{await api.setVoiceAutoLogin(true);}catch(error){backgroundError='声音已启动，开机自动启动设置失败：'+error.message;}
+  }else {wanted=false;localStorage.setItem(autoKey,'0');try{await api.setVoiceAutoLogin(false);}catch(error){report(error);}try{await api.restoreVoiceDefault();}finally{if(engine){await engine.context.setSinkId({type:'none'});engine.sending=false;if(!engine.monitorAudio&&!recording)await stop();}}}
   view?.refresh();
  }
  async function monitor(enabled,api){
@@ -187,14 +192,14 @@
   }
   const monitorWrap=el('label','voice-setting'),volume=el('input');volume.type='range';volume.min=0;volume.max=100;volume.value=routes.monitorVolume;volume.setAttribute('aria-label','返听音量');monitorWrap.append(el('strong','','返听音量'),volume);volume.oninput=()=>{routes.monitorVolume=Number(volume.value);if(engine?.monitorAudio)engine.monitorAudio.volume=routes.monitorVolume/100;save();};
   const install=button('安装虚拟声卡',async()=>{status.textContent='正在下载虚拟声卡…';await api.downloadPackage('vb-cable');const result=await api.installPackage('vb-cable');notify(result?.cancelled?'已取消选择安装程序':'请选择 64 位安装程序完成安装');});
-  const extra=el('details','voice-more'),summary=el('summary','','声音连接与说明');extra.append(summary,el('p','o4-mouse-muted','语音软件的麦克风请选择 CABLE Output，电脑播放设备仍选你的耳机。实时返听有处理延迟，默认关闭；录后回放更便于判断。共鸣音色负值偏厚、正值偏亮，不是混响。动态齿音主要处理刺耳的嘶声，不是呼吸声识别。'),install);
+  const extra=el('details','voice-more'),summary=el('summary','','声音连接与说明');extra.append(summary,el('p','o4-mouse-muted','启动后自动设为默认麦克风；使用指定设备的语音软件请选择 CABLE Output。电脑播放设备仍选你的耳机。实时返听有处理延迟，默认关闭；录后回放更便于判断。共鸣音色负值偏厚、正值偏亮，不是混响。动态齿音主要处理刺耳的嘶声，不是呼吸声识别。'),install);
   root.append(head,status,presetRow,actions,routing,recorderBox,levels,settings,monitorWrap,extra,el('p','o4-mouse-muted','关闭窗口后声音优化继续在托盘运行；从托盘退出会结束。当前参数自动保存。'));
   container.replaceChildren(root);
   function refreshValues(){for(const [name,{slider,number,suffix}]of controls){slider.value=bank[active][name];number.textContent=bank[active][name]+suffix;slider.disabled=active==='A'&&['formant','deessAmount','deessThreshold','deessFrequency'].includes(name);}preserve.checked=bank.B.preserveFormants;preserve.disabled=active==='A';for(const mode of ['A','B']){presets[mode].classList.toggle('primary',active===mode);presets[mode].setAttribute('aria-pressed',String(active===mode));}}
   function refresh(){
    if(!alive)return;refreshValues();
    run.textContent=engine?.sending?'停止声音优化':'启动声音优化';listening.textContent=engine?.monitorAudio?'关闭返听':'临时开启返听';
-   status.textContent=(engine?.sending?'运行中 · 语音软件请选择 CABLE Output':engine?'试听处理中 · 尚未发送到语音软件':'未运行')+' · '+active+' 档'+(engine?.monitorAudio?' · 返听已开启':'');
+   status.textContent=backgroundError||((engine?.sending?'运行中 · 默认麦克风：CABLE Output':engine?'试听处理中 · 尚未发送到语音软件':'未运行')+' · '+active+' 档'+(engine?.monitorAudio?' · 返听已开启':''));
    run.disabled=listening.disabled=busy;input.disabled=!!engine;recordButton.disabled=busy;recordButton.textContent=recording?'结束录音':'录制 A / B 对比';
    for(const mode of ['A','B'])plays[mode].disabled=busy||!clips;
    if(!clips&&playbackURL){playback.pause();playback.removeAttribute('src');playback.load();playback.hidden=true;playbackURL='';}
@@ -214,5 +219,9 @@
   const onDeviceChange=()=>loadDevices().catch(report);navigator.mediaDevices.addEventListener('devicechange',onDeviceChange);
   return {ready,dispose(){alive=false;clearInterval(timer);navigator.mediaDevices.removeEventListener('devicechange',onDeviceChange);playback.pause();if(recording)finishRecording().catch(report);if(view?.refresh===refresh)view=null;root.remove();}};
  }
- window.One4AllVoice={render,stop,isRunning:()=>!!engine,getState:snapshot};
+ async function resume(api,notify=()=>{}){backgroundNotify=notify;if(!wanted||engine?.sending)return;if(recovering)return recovering;recovering=send(true,api).catch(error=>{backgroundError='自动启动失败：'+(error.message||String(error));view?.refresh();notify(backgroundError);}).finally(()=>{recovering=null;});return recovering;}
+ navigator.mediaDevices?.addEventListener('devicechange',()=>{clearTimeout(deviceTimer);deviceTimer=setTimeout(()=>{if(!wanted)return;if(engine?.sending&&engine.stream.getAudioTracks().some(track=>track.readyState==='live')){apiForRecovery?.activateVoiceDefault().catch(error=>{backgroundError='默认麦克风接管失败：'+error.message;backgroundNotify(backgroundError);view?.refresh();});}else if(apiForRecovery&&!engine)resume(apiForRecovery,backgroundNotify);},800);});
+ let apiForRecovery=null;
+ const startBackground=(api,notify)=>{apiForRecovery=api;return resume(api,notify);};
+ window.One4AllVoice={render,stop,resume:startBackground,isRunning:()=>!!engine,getState:snapshot};
 })();

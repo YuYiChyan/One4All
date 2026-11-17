@@ -119,6 +119,13 @@ else {
     resourceRefresh=require('../core/resource-refresh.cjs').createResourceRefresh({utilityProcess});
     handle('refresh-resources',brand=>resourceRefresh.run(brand));
     handle('cancel-resource-refresh',brand=>resourceRefresh.cancel(brand));
+    let voiceDefaultQueue=Promise.resolve();
+    const voiceDefault=command=>{const job=voiceDefaultQueue.catch(()=>{}).then(()=>new Promise((resolve,reject)=>{const {execFile}=require('node:child_process'),python=path.join(payloadRoot,'python','python.exe'),deps=path.join(payloadRoot,'xiberia-audio-deps');execFile(python,['-I','-B',path.join(__dirname,'../core/voice-default-input.py'),deps,stateRoot,command],{windowsHide:true,encoding:'utf8'},(error,stdout)=>{if(error)return reject(Error('默认麦克风设置失败：'+error.message));try{const result=JSON.parse(stdout);if(!result.ok)throw Error(result.error);resolve(result);}catch(e){reject(e);}});}));voiceDefaultQueue=job;return job;};
+    handle('voice-auto-login',require('../core/voice-login.cjs').createVoiceLogin({app,stateRoot}));
+    handle('voice-default-activate',()=>voiceDefault('activate'));
+    handle('voice-default-restore',()=>voiceDefault('restore'));
+    let restoringOnQuit=false;
+    app.on('before-quit',event=>{if(restoringOnQuit)return;restoringOnQuit=true;event.preventDefault();voiceDefault('restore').catch(error=>log('voice-restore-error',error.message)).finally(()=>app.quit());});
     handle('voice-model-assets',()=>{const root=path.join(__dirname,'voice-vendor','deepfilter');return {wasm:fs.readFileSync(path.join(root,'df_bg.wasm')),model:fs.readFileSync(path.join(root,'DeepFilterNet3_onnx.tar.gz'))};});
     handle('device-catalog',()=>{const catalog=deviceCatalog.list();return {...catalog,presentation:require('../core/catalog-presentation.cjs').buildCatalogPresentation(catalog.devices),brands:require('../core/domestic-models.cjs').BRANDS};});
     handle('razer-scan',()=>razerService.scan());

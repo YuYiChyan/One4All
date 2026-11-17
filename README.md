@@ -1,10 +1,12 @@
-# One4All · 0.7.0-preview.12
+# One4All · 0.7.0-preview.13
 
-One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.12.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
+One4All 是独立的 Windows 多品牌设备中心：自带 Chromium，使用自己的设备库和统一控件，按需获取厂商依赖。Windows 用户运行 `One4All-Setup-0.7.0-preview.13.exe` 安装，随后从桌面或开始菜单打开；卸载入口在系统“已安装的应用”及开始菜单中。开发目录仍可双击 `启动 One4All.cmd`。
 
-[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.12) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
+[下载 Windows 安装包](https://github.com/YuYiChyan/One4All/releases) · [本版发布说明](https://github.com/YuYiChyan/One4All/releases/tag/v0.7.0-preview.13) · [问题与设备反馈](https://github.com/YuYiChyan/One4All/issues) · [参与适配](CONTRIBUTING.md)
 
-0.7.0-preview.12 修正隐藏启动时窗口可能不显示的问题，改进卸载时对进程的处理，发行包不再包含个人卡片。
+0.7.0-preview.13 在启动声音优化后自动接管系统默认麦克风，并在登录 Windows 后恢复处理；停止时按原状态恢复。详见 [声音优化](docs/VOICE-TOOLS.md)。
+
+前版修正隐藏启动时窗口可能不显示的问题，改进卸载时对进程的处理，发行包不再包含个人卡片。
 
 前版扩展声音优化：加入本机 DeepFilterNet3 降噪、音色和轻度压缩的实时控制，可通过 VB-CABLE 接入语音软件。使用方式见 [声音优化](docs/VOICE-TOOLS.md)。
 
