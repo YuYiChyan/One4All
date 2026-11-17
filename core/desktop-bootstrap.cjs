@@ -69,12 +69,7 @@ function prepareDesktopData({stateRoot,legacyRoot,packageRoot,bundledRoot,migrat
    registry.importedFrom=legacyRoot;registry.importedAt=new Date().toISOString();
    const previousData=path.join(legacyRoot,'data');if(directory(previousData))copyMissing(previousData,path.join(stateRoot,'data'));
    migrated=true;
-  }else {
-   const bundledCards=path.join(bundledRoot,'bundled-cards');
-   const cards=readRegistry(path.join(bundledCards,'cards.json'));
-   if(directory(path.join(bundledCards,'payload'))){copyMissing(path.join(bundledCards,'payload'),payloadRoot);registry.plugins=cards.plugins;}
-   freshInstall=true;
-  }
+  }else freshInstall=true;
   fs.writeFileSync(registryPath,JSON.stringify(registry,null,2),{flag:'wx'});
  }else if(!hadRegistry){
   // A pre-existing standalone payload is user-owned. Register an empty home

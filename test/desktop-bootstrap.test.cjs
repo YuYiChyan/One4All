@@ -65,3 +65,12 @@ test('invalid bundled artwork paths never preserve developer-machine paths or es
  const options=fixture(t);seed(options,'atk',{devices:[{id:'bad',variants:[{imagePath:'C:\\Users\\developer\\private.png'},{imagePath:'../outside.png'},{imagePath:'file:///C:/developer/picture.png'}],imagePaths:{valid:'assets/good.png',invalid:'/developer/image.png'}}]});
  const result=prepareDesktopData(options),catalog=JSON.parse(fs.readFileSync(path.join(result.resourceRoot,'atk','catalog.json'),'utf8'));assert.deepEqual(catalog.devices[0].variants.map(v=>v.imagePath),[null,null,null]);assert.equal(catalog.devices[0].imagePaths.invalid,null);assert.equal(catalog.devices[0].imagePaths.valid,path.join(result.resourceRoot,'atk','assets','good.png'));assert.equal(result.seedWarnings.length,4);assert.equal(JSON.stringify(catalog).includes('developer'),false);
 });
+
+test('fresh installation ignores personal card payloads even if an older bundle contains them',t=>{
+ const options=fixture(t);
+ write(path.join(options.bundledRoot,'bundled-cards','cards.json'),{plugins:[{id:'keyboard'}]});
+ write(path.join(options.bundledRoot,'bundled-cards','payload','product-assets','private-card.png'),'private');
+ const result=prepareDesktopData(options);
+ assert.deepEqual(JSON.parse(fs.readFileSync(result.registryPath,'utf8')).plugins,[]);
+ assert.equal(fs.existsSync(path.join(result.payloadRoot,'product-assets','private-card.png')),false);
+});

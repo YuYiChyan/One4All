@@ -100,8 +100,11 @@ else {
   const showMainWindow=()=>{if(appTray)appTray.show();else if(mainWindow&&!mainWindow.isDestroyed()){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}};
   app.on('second-instance',showMainWindow);
   app.on('activate',showMainWindow);
+  log('startup-stage','waiting-for-electron');
   app.whenReady().then(async()=>{
+    log('startup-stage','preparing-data');
     const payloadRoot=importExistingModules();
+    log('startup-stage','data-ready');
     const registered=readJson(path.join(stateRoot,'registry.json'),{plugins:[]});
     runtime=registered.plugins?.length?require('../runtime/host.cjs').start({stateRoot,payloadRoot,homeURL,getTheme:()=>settings.theme}):{listCards:()=>[],closeDevice:()=>{},setTheme:()=>{},openDevice(){throw Error('请从支持库选择设备');}};
     keyboardService=require('../core/hid/keyboard-service.cjs').createKeyboardService({python:path.join(payloadRoot,'python','python.exe'),profileDirectory:path.join(stateRoot,'data','keyboard-appearance')});
@@ -192,15 +195,30 @@ else {
     handle('keyboard-capabilities',()=>[]);
     handle('keyboard-execute',()=>{throw Error('该设备尚未提供此设置接口，请使用已接入的原厂控制页。');});
     handle('app-info',()=>({version:app.getVersion(),stateRoot,payloadRoot,runtime:process.versions.electron,freshInstall:bootstrapInfo.freshInstall}));
+    log('startup-stage','creating-window');
     mainWindow=new BrowserWindow({title:'One4All',icon:path.join(__dirname,'assets/one4all.png'),width:1360,height:900,minWidth:960,minHeight:680,backgroundColor:settings.theme==='dark'?'#14171c':'#f5f6f8',autoHideMenuBar:true,show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
     attachPageNavigation(mainWindow.webContents,{inside:url=>url.split(/[?#]/)[0]===homeURL,openExternal:url=>shell.openExternal(url),onError:error=>log('link-error',error.message)});
     mainWindow.webContents.on('console-message',(_event,details)=>{if(details.level==='error')log('renderer-error',details.message);});
     mainWindow.webContents.on('render-process-gone',(_event,details)=>log('renderer-gone',details));
     mainWindow.on('closed',()=>{closeBrand();runtime.closeDevice();mainWindow=null;});
     appTray=createTrayController({app,window:mainWindow,Tray,Menu,iconPath:path.join(__dirname,'assets/one4all.ico'),onError:error=>log('tray-error',error.stack||error.message)});
-    mainWindow.once('ready-to-show',()=>{if(process.env.ONE4ALL_DESKTOP_HIDDEN!=='1')mainWindow.show();});
+    let userClosedWindow=false;
+    mainWindow.on('close',()=>{userClosedWindow=true;});
+    mainWindow.once('ready-to-show',()=>{
+      if(process.env.ONE4ALL_DESKTOP_HIDDEN==='1')return;
+      mainWindow.show();
+      // Windows can apply the launcher's hidden startup flag to the first show.
+      if(!mainWindow.isVisible())setTimeout(()=>{
+        if(mainWindow&&!mainWindow.isDestroyed()&&!userClosedWindow&&!mainWindow.isVisible()){
+          mainWindow.show();
+          log('startup-stage',mainWindow.isVisible()?'window-shown-after-retry':'window-still-hidden');
+        }
+      },1000);
+    });
     installKeyboardHid();
+    log('startup-stage','loading-page');
     await mainWindow.loadURL(homeURL);
+    log('startup-stage','page-loaded');
     log('ready',{version:app.getVersion(),cards:runtime.listCards().map(card=>card.id),payloadRoot});
   }).catch(error=>{log('startup-error',error.stack||error.message);dialog.showErrorBox('One4All 启动失败',error.message);app.quit();});
   app.on('window-all-closed',()=>app.quit());

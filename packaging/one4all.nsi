@@ -52,16 +52,15 @@ Function .onInit
 FunctionEnd
 
 Function CheckApplicationClosed
+ InitPluginsDir
+ File /oname=$PLUGINSDIR\close-one4all.ps1 "${CLOSE_SCRIPT}"
  retry:
- IfFileExists "$INSTDIR\One4All.exe" 0 done
- ClearErrors
- FileOpen $0 "$INSTDIR\One4All.exe" a
- IfErrors locked
- FileClose $0
- Goto done
- locked:
+ nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\close-one4all.ps1" "$INSTDIR\One4All.exe"'
+ Pop $0
+ Pop $1
+ StrCmp $0 0 done
  IfSilent abort
- MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "请在系统托盘右键 One4All 图标，选择“退出 One4All”，然后重试。" IDRETRY retry
+ MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "无法关闭 One4All：$1$\r$\n请重试。" IDRETRY retry
  abort:
  SetErrorLevel 2
  Abort
@@ -72,6 +71,7 @@ Section "One4All Desktop（必需）" MainSection
  SectionIn RO
  SetShellVarContext current
  Call CheckApplicationClosed
+ RMDir /r "$INSTDIR\resources\bundled-cards"
  SetOverwrite on
  !include "${INSTALL_FILES}"
  SetOutPath "$INSTDIR"
@@ -128,16 +128,15 @@ Function un.OptionsLeave
 FunctionEnd
 
 Function un.CheckApplicationClosed
+ InitPluginsDir
+ File /oname=$PLUGINSDIR\close-one4all.ps1 "${CLOSE_SCRIPT}"
  retry:
- IfFileExists "$INSTDIR\One4All.exe" 0 done
- ClearErrors
- FileOpen $0 "$INSTDIR\One4All.exe" a
- IfErrors locked
- FileClose $0
- Goto done
- locked:
+ nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\close-one4all.ps1" "$INSTDIR\One4All.exe"'
+ Pop $0
+ Pop $1
+ StrCmp $0 0 done
  IfSilent abort
- MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "请在系统托盘右键 One4All 图标，选择“退出 One4All”，然后重试卸载。" IDRETRY retry
+ MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "无法关闭 One4All：$1$\r$\n请重试。" IDRETRY retry
  abort:
  SetErrorLevel 2
  Abort
@@ -148,6 +147,14 @@ Section "Uninstall"
  SetShellVarContext current
  Call un.CheckApplicationClosed
  !include "${UNINSTALL_FILES}"
+ RMDir /r "$INSTDIR\resources\bundled-cards"
+ IfFileExists "$INSTDIR\One4All.exe" 0 applicationRemoved
+ IfSilent uninstallFailed
+ MessageBox MB_OK|MB_ICONEXCLAMATION "无法删除 One4All 程序文件，请检查该文件的权限或占用后重试。"
+ uninstallFailed:
+ SetErrorLevel 2
+ Abort
+ applicationRemoved:
  Delete "$INSTDIR\Uninstall.exe"
  RMDir "$INSTDIR"
  Delete "$DESKTOP\One4All Desktop.lnk"
